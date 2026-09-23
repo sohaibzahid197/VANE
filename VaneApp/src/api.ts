@@ -200,7 +200,7 @@ const SCORECARD_URL = `${BASE}/public/scorecard`;
  * is measured rather than asserted. Returns [] on any failure — an absent
  * scorecard renders as nothing, never as a fabricated number.
  */
-export async function fetchScorecard(): Promise<ScoreRow[]> {
+export async function fetchScorecard(): Promise<ScoreRow[] | null> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
@@ -208,20 +208,42 @@ export async function fetchScorecard(): Promise<ScoreRow[]> {
       signal: ctl.signal,
       headers: await appCheckHeader(),
     });
-    if (!res.ok) return [];
+    // 404 is a real answer — the pipeline has not published one yet — and is
+    // different from a failure to reach the network. Collapsing both to []
+    // meant the screen could not tell "nothing graded yet" from "broken", and
+    // showed the same blank either way.
+    if (res.status === 404) return [];
+    if (!res.ok) return null;
     const body = await res.json();
     const raw = unwrap({ mapValue: { fields: body.fields ?? {} } });
     const rows = Array.isArray(raw?.rows) ? raw.rows : [];
     return rows
       .filter((r: any) => FALLBACK_HORIZONS.includes(r?.horizon))
-      .map((r: any) => ({
-        horizon: r.horizon as Horizon,
-        graded: Number(r.graded) || 0,
-        correct: Number(r.correct) || 0,
-        hitRate: typeof r.hitRate === 'number' ? r.hitRate : null,
-      }));
+      .map((r: any) => {
+        const graded = Number(r.graded) || 0;
+        const correct = Number(r.correct) || 0;
+        // Recomputed, not trusted. The counts sit next to the rate on screen,
+        // so a bad publish would otherwise print "80%" above "12/25" — self
+        // refuting on the one screen whose whole claim is checkability.
+        const published = typeof r.hitRate === 'number' ? r.hitRate : null;
+        const derived = graded > 0 ? correct / graded : null;
+        const agrees =
+          published !== null && derived !== null && Math.abs(published - derived) < 1e-6;
+        return {
+          horizon: r.horizon as Horizon,
+          graded,
+          correct,
+          hitRate: agrees ? published : null,
+        };
+      })
+      // Sorted here rather than trusting publish order: the columns would
+      // otherwise silently reorder if the pipeline's order ever changed.
+      .sort(
+        (a: ScoreRow, b: ScoreRow) =>
+          FALLBACK_HORIZONS.indexOf(a.horizon) - FALLBACK_HORIZONS.indexOf(b.horizon),
+      );
   } catch {
-    return [];
+    return null;
   } finally {
     clearTimeout(timer);
   }

@@ -15,11 +15,22 @@ function fakeDb() {
   });
 
   const db: any = {
-    doc: (path: string) => ({ path }),
+    doc: (path: string) => ({
+      path,
+      get: async () => ({ exists: docs.has(path), data: () => docs.get(path) }),
+    }),
+    runTransaction: async (fn: any) =>
+      fn({
+        get: async (ref: any) => ({ exists: docs.has(ref.path), data: () => docs.get(ref.path) }),
+        set: (ref: any, data: any) => docs.set(ref.path, data),
+      }),
     batch: () => ({
-      set: (ref: any, data: any) => {
+      // Honours `merge`, because the cursor is written one horizon at a time
+      // and a fake that always replaced would silently drop the others —
+      // making the code look broken when the double was.
+      set: (ref: any, data: any, opts?: { merge?: boolean }) => {
         writes.push({ op: 'set', path: ref.path });
-        docs.set(ref.path, data);
+        docs.set(ref.path, opts?.merge ? { ...docs.get(ref.path), ...data } : data);
       },
       update: (ref: any, data: any) => {
         writes.push({ op: 'update', path: ref.path });
@@ -57,19 +68,40 @@ function fakeDb() {
 const HZ = ['24H', '7D', '30D'] as const;
 const NOW = Date.UTC(2026, 8, 24, 12, 0, 0);
 
-test('one call per coin, horizon and hour', async () => {
+test('calls do not overlap: one per coin per horizon LENGTH', async () => {
   const { db, docs } = fakeDb();
   const coins = [{ sym: 'BTC', price: 100, up: true, targets: {} }];
+
   await recordCalls(db, coins, [...HZ], NOW);
-  assert.equal(docs.size, 3, 'one per horizon');
+  // 3 calls + the cursor document.
+  assert.equal(docs.size, 4, 'one per horizon, plus the cursor');
 
-  // The refresh runs twice an hour. The second run of the same hour must not
-  // record a second opinion, or one view of the market is counted twice.
-  await recordCalls(db, coins, [...HZ], NOW + 30 * 60_000);
-  assert.equal(docs.size, 3, 'same hour must not add rows');
+  // The cron fires every 15 minutes. None of those may add a call — hourly
+  // 24H calls would share 23 of 24 hours, and the published sample would
+  // claim far more evidence than exists.
+  for (const m of [15, 30, 45, 60, 180, 720]) {
+    await recordCalls(db, coins, [...HZ], NOW + m * 60_000);
+  }
+  assert.equal(docs.size, 4, 'nothing within the first day adds a call');
 
-  await recordCalls(db, coins, [...HZ], NOW + 60 * 60_000);
-  assert.equal(docs.size, 6, 'next hour records again');
+  // A day later the 24H window has elapsed — and only that one.
+  await recordCalls(db, coins, [...HZ], NOW + 25 * 3_600_000);
+  assert.equal(docs.size, 5, 'only 24H records again after a day');
+
+  // A week later 7D turns over too.
+  await recordCalls(db, coins, [...HZ], NOW + 8 * 24 * 3_600_000);
+  assert.equal(docs.size, 7, '24H and 7D, not 30D');
+});
+
+test('the first call of a window is kept, not the last', async () => {
+  // The entry price must match what users were shown when the call was made.
+  const { db, docs } = fakeDb();
+  await recordCalls(db, [{ sym: 'BTC', price: 100, up: true, targets: {} }], ['24H'], NOW);
+  await recordCalls(db, [{ sym: 'BTC', price: 999, up: false, targets: {} }],
+                    ['24H'], NOW + 45 * 60_000);
+  const call = [...docs.entries()].find(([k]) => k.startsWith('signals_history/'))![1];
+  assert.equal(call.entryPrice, 100, 'a later run must not rewrite the entry price');
+  assert.equal(call.direction, 'up', 'nor the direction users saw');
 });
 
 test('a call is only due after its horizon has elapsed', async () => {
@@ -114,33 +146,76 @@ test('a coin that left the universe is voided, not graded', async () => {
 
 test('hit rate is withheld until there are enough graded calls', async () => {
   const { db } = fakeDb();
-  // 10 calls, all winners. A 100% hit rate off ten samples is not evidence.
-  for (let i = 0; i < 10; i++) {
+  // 50 calls, all winners. A 100% hit rate is still not evidence at n=50:
+  // the interval on a coin flip that wide covers almost everything.
+  const prices: Record<string, number> = {};
+  for (let i = 0; i < 50; i++) {
+    prices[`C${i}`] = 110;
     await recordCalls(db, [{ sym: `C${i}`, price: 100, up: true, targets: {} }],
-                      ['24H'], NOW + i * 3_600_000);
+                      ['24H'], NOW + i * 25 * 3_600_000);
   }
-  await gradeCalls(db, Object.fromEntries([...Array(10)].map((_, i) => [`C${i}`, 110])),
-                   NOW + 40 * 3_600_000);
-  const rows = await scorecard(db);
-  const day = rows.find((r) => r.horizon === '24H')!;
-  assert.equal(day.graded, 10);
-  assert.equal(day.correct, 10);
+  await gradeCalls(db, prices, NOW + 10_000 * 3_600_000);
+  const day = (await scorecard(db)).find((r) => r.horizon === '24H')!;
+  assert.equal(day.graded, 50);
+  assert.equal(day.correct, 50);
   assert.equal(day.hitRate, null, 'below the minimum, no rate is published');
 });
 
 test('hit rate appears once the sample is large enough, and excludes ties', async () => {
   const { db } = fakeDb();
   const prices: Record<string, number> = {};
-  for (let i = 0; i < 40; i++) {
-    // 30 winners, 10 losers => 75%.
-    const up = true;
-    prices[`C${i}`] = i < 30 ? 110 : 90;
-    await recordCalls(db, [{ sym: `C${i}`, price: 100, up, targets: {} }],
-                      ['24H'], NOW + i * 3_600_000);
+  const N = 200;
+  for (let i = 0; i < N; i++) {
+    // 150 winners, 50 losers => 75%.
+    prices[`C${i}`] = i < 150 ? 110 : 90;
+    await recordCalls(db, [{ sym: `C${i}`, price: 100, up: true, targets: {} }],
+                      ['24H'], NOW + i * 25 * 3_600_000);
   }
-  await gradeCalls(db, prices, NOW + 100 * 3_600_000);
+  await gradeCalls(db, prices, NOW + 100_000 * 3_600_000);
   const day = (await scorecard(db)).find((r) => r.horizon === '24H')!;
-  assert.equal(day.graded, 40);
-  assert.equal(day.correct, 30);
+  assert.equal(day.graded, N);
+  assert.equal(day.correct, 150);
   assert.equal(day.hitRate, 0.75);
+});
+
+
+test('the running totals survive being graded in separate batches', () => {
+  // The counters replaced a full scan, so a lost delta is a permanently wrong
+  // published hit rate rather than a number that self-corrects next run.
+  return (async () => {
+    const { db } = fakeDb();
+    const prices: Record<string, number> = {};
+    for (let i = 0; i < 20; i++) {
+      prices[`A${i}`] = 110;
+      await recordCalls(db, [{ sym: `A${i}`, price: 100, up: true, targets: {} }],
+                        ['24H'], NOW + i * 25 * 3_600_000);
+    }
+    // After every A call is placed AND due.
+    await gradeCalls(db, prices, NOW + 600 * 3_600_000);
+
+    for (let i = 0; i < 20; i++) {
+      prices[`B${i}`] = 90;
+      await recordCalls(db, [{ sym: `B${i}`, price: 100, up: true, targets: {} }],
+                        ['24H'], NOW + (700 + i * 25) * 3_600_000);
+    }
+    await gradeCalls(db, prices, NOW + 1300 * 3_600_000);
+
+    const day = (await scorecard(db)).find((r) => r.horizon === '24H')!;
+    assert.equal(day.graded, 40, 'both runs counted');
+    assert.equal(day.correct, 20, 'only the winners');
+    // The counters are right; the RATE is still withheld at n=40, which is
+    // the threshold doing its job rather than a counting failure.
+    assert.equal(day.hitRate, null);
+  })();
+});
+
+test('ties and voids never reach the totals', async () => {
+  const { db } = fakeDb();
+  await recordCalls(db, [{ sym: 'FLAT', price: 1, up: false, targets: {} }], ['24H'], NOW);
+  await recordCalls(db, [{ sym: 'GONE', price: 5, up: true, targets: {} }],
+                    ['24H'], NOW + 25 * 3_600_000);
+  await gradeCalls(db, { FLAT: 1 }, NOW + 100 * 3_600_000);
+  const day = (await scorecard(db)).find((r) => r.horizon === '24H')!;
+  assert.equal(day.graded, 0, 'a tie and a void are not results');
+  assert.equal(day.correct, 0);
 });

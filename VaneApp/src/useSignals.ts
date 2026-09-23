@@ -180,12 +180,20 @@ export function useSignals(): SignalsState {
 /**
  * How old a snapshot may be before the app should say so out loud.
  *
- * The refresh cron targets 30 minutes, but GitHub drops scheduled runs, so
- * anything past 90 minutes means a publish was missed rather than merely
- * delayed. Silence at that point is the app quietly presenting stale prices
- * as current.
+ * The refresh cron targets 15 minutes (two offset schedules — see
+ * .github/workflows/refresh.yml). GitHub drops scheduled runs, so a single
+ * miss is expected and must not warn; sixty minutes is four consecutive
+ * misses, past which a publish is broken rather than merely late. Silence at
+ * that point is the app quietly presenting stale prices as current.
+ *
+ * Ninety minutes was chosen against the old 30-minute cadence. Left there, it
+ * would have meant SIX misses — a weaker guarantee after the reliability fix
+ * than before it.
+ *
+ * Compared against the DEVICE clock, so a badly skewed phone warns early or
+ * never.
  */
-export const STALE_AFTER_MS = 90 * 60_000;
+export const STALE_AFTER_MS = 60 * 60_000;
 
 /** True when a snapshot is old enough that the user should be warned. */
 export function isStale(updatedAt: string): boolean {

@@ -2,21 +2,31 @@ name: refresh-signals
 
 on:
   schedule:
-    # TWO schedules, deliberately offset.
+    # TWO schedules, 15 minutes apart. Their fire times are DISJOINT
+    # (*/30 -> :00,:30; 15,45 -> :15,:45), so neither is a standby for the
+    # other's slot — together they simply run every 15 minutes.
     #
-    # GitHub's cron is best-effort: it delays runs under load and silently
-    # drops them entirely. Observed in practice on this repo — one scheduled
-    # run landed in a three-hour window against a */30 schedule, and the app
-    # told users "Updated 1h ago". Two offset schedules rarely get skipped
-    # together, so this is redundancy rather than a doubling of frequency.
-    # The concurrency group below collapses any overlap into one run.
+    # That is the point, and an earlier version of this comment had it wrong:
+    # this is a halving of the interval, not redundancy. GitHub's cron is
+    # best-effort, delaying runs under load and silently dropping them —
+    # observed here, with one run landing in a three-hour window against */30
+    # while the app told users "Updated 1h ago". Halving the interval halves
+    # the damage of any single drop: worst case after one skipped run falls
+    # from 60 minutes to 30.
+    #
+    # Actions minutes are free on a public repo, so the extra runs cost
+    # nothing there. What they do cost is Firestore writes — see scorecard.ts.
     - cron: '*/30 * * * *'
     - cron: '15,45 * * * *'
   workflow_dispatch:
 
 concurrency:
   group: refresh
-  cancel-in-progress: true
+  # Queue, do not kill. `true` cancels the OLDER run, which is the one that
+  # has already started publishing — and the only time two runs overlap is
+  # when GitHub has bunched delayed runs together, which is exactly the
+  # pathology this schedule exists to survive.
+  cancel-in-progress: false
 
 jobs:
   refresh:

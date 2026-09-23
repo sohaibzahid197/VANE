@@ -21,6 +21,15 @@ export default function Record() {
   const s = useScale();
   const st = useStyles();
   const [filter, setFilter] = useState<Filter>('All');
+  // Bumped on every pull-to-refresh so ModelRecord reloads with the rest of
+  // the screen. Without it the two halves disagreed about freshness: the tab
+  // stays mounted for the app's lifetime, so the scorecard was fetched once
+  // per launch and never again.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refreshAll = () => {
+    setRefreshKey((k) => k + 1);
+    refreshPredictions();
+  };
   const stats = accuracyOf(history, resolvedTimeline);
 
   const rows = history.filter(
@@ -31,7 +40,7 @@ export default function Record() {
     return (
       <Screen>
         <Text style={st.title} accessibilityRole="header">My record</Text>
-        <ModelRecord />
+        <ModelRecord refreshKey={refreshKey} />
         <Loading label="Loading your calls" />
       </Screen>
     );
@@ -39,9 +48,9 @@ export default function Record() {
 
   if (predictionsError && history.length === 0 && calls.length === 0) {
     return (
-      <Screen onRefresh={refreshPredictions} refreshing={loadingPredictions}>
+      <Screen onRefresh={refreshAll} refreshing={loadingPredictions}>
         <Text style={st.title} accessibilityRole="header">My record</Text>
-        <ModelRecord />
+        <ModelRecord refreshKey={refreshKey} />
         <ErrorState message={predictionsError} onRetry={refreshPredictions} />
       </Screen>
     );
@@ -49,9 +58,9 @@ export default function Record() {
 
   if (history.length === 0) {
     return (
-      <Screen>
+      <Screen onRefresh={refreshAll} refreshing={loadingPredictions}>
         <Text style={st.title} accessibilityRole="header">My record</Text>
-        <ModelRecord />
+        <ModelRecord refreshKey={refreshKey} />
         {calls.length > 0 ? (
           <>
             <Card style={st.pendingCard}>
@@ -94,9 +103,9 @@ export default function Record() {
   }
 
   return (
-    <Screen onRefresh={refreshPredictions} refreshing={loadingPredictions}>
+    <Screen onRefresh={refreshAll} refreshing={loadingPredictions}>
       <Text style={st.title} accessibilityRole="header">My record</Text>
-      <ModelRecord />
+      <ModelRecord refreshKey={refreshKey} />
 
       <View style={st.stats}>
         <View style={st.stat}>
