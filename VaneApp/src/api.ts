@@ -149,7 +149,7 @@ export async function fetchSignals(entitled = false): Promise<Snapshot> {
   const horizons: Horizon[] =
     Array.isArray(raw.horizons) && raw.horizons.length ? raw.horizons : FALLBACK_HORIZONS;
 
-  const coins: Coin[] = (raw.coins ?? []).map((c: any, i: number) => {
+  const coins: Coin[] = (raw.coins ?? []).map((c: any) => {
     const targets = {} as Coin['targets'];
     for (const hz of FALLBACK_HORIZONS) {
       const t = c.targets?.[hz];

@@ -130,10 +130,14 @@ export async function adminDb() {
 /**
  * Coins any device may read without paying.
  *
- * This is the shop window, not a free tier — enough for the App Store listing
- * to show a working app and for a buyer to judge the product before paying.
+ * Three, not one. A single coin made the app look like a shop window rather
+ * than a product: a reviewer who does not subscribe would see one row where
+ * the screenshots imply thirty, which is the likeliest cause of a soft
+ * rejection under Guideline 2.1. Three is still a tenth of the product, it is
+ * obviously a working app, and it is enough for a buyer to judge the
+ * reasoning and the track record before paying for the rest.
  */
-export const FREE_SYMBOLS = ['BTC'] as const;
+export const FREE_SYMBOLS = ['BTC', 'ETH', 'SOL'] as const;
 
 const isFree = (sym: string) => (FREE_SYMBOLS as readonly string[]).includes(sym);
 

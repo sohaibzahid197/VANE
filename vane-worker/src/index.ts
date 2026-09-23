@@ -51,6 +51,36 @@ export type Env = {
   ALLOWED_ENVIRONMENT: Environment;
 };
 
+/**
+ * Per-uid throttle for /validate.
+ *
+ * Every call costs up to two App Store Server API requests plus two Firestore
+ * writes, and anyone can mint a Firebase anonymous token, so an unthrottled
+ * endpoint lets one attacker burn the Apple API quota that real purchases
+ * depend on. A purchase is a once-per-period event; a handful of attempts is
+ * generous.
+ *
+ * Isolate-local, deliberately: a Durable Object or KV would be exact but adds
+ * a binding and a round trip, and this only has to stop a flood from being
+ * free. It degrades to "per isolate" under load, which is still a ceiling.
+ */
+const RATE_LIMIT = { max: 10, windowMs: 60_000 };
+const hits = new Map<string, number[]>();
+
+function rateLimited(uid: string): boolean {
+  const now = Date.now();
+  const recent = (hits.get(uid) ?? []).filter((t) => now - t < RATE_LIMIT.windowMs);
+  recent.push(now);
+  hits.set(uid, recent);
+  // Unbounded growth is its own denial of service; drop cold entries.
+  if (hits.size > 5000) {
+    for (const [k, v] of hits) {
+      if (v.length === 0 || now - v[v.length - 1]! > RATE_LIMIT.windowMs) hits.delete(k);
+    }
+  }
+  return recent.length > RATE_LIMIT.max;
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -100,6 +130,8 @@ async function validate(request: Request, env: Env): Promise<Response> {
 
   const uid = await uidFromIdToken(env.FIREBASE_API_KEY, idToken);
   if (!uid) return json({ error: 'invalid token' }, 401);
+
+  if (rateLimited(uid)) return json({ error: 'too many requests' }, 429);
 
   const body = (await request.json().catch(() => null)) as { transactionId?: string } | null;
   const transactionId = body?.transactionId;

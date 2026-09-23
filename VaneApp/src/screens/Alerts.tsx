@@ -185,7 +185,7 @@ export default function Alerts({
 }
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => {
     // Track and knob share one axis so the knob can never escape the track.
     const trackW = w(42);
@@ -223,5 +223,5 @@ function useStyles() {
       },
       knob: { width: knob, height: knob, borderRadius: knob / 2, backgroundColor: '#fff' },
     });
-  }, [width, w, h, f]);
+  }, [w, h, f]);
 }

@@ -8,11 +8,14 @@
 // updates on rotation, fold, or split-screen resize. `useScale()` subscribes
 // to dimension changes and re-renders.
 
+import { useMemo } from 'react';
 import { useWindowDimensions } from 'react-native';
 import { Dimensions, PixelRatio } from 'react-native';
 
 const BASE_W = 402;
-const BASE_H = 874;
+// Vertical rhythm deliberately keys off WIDTH (see scaleFrom), so the design
+// height is documentation rather than a value anything divides by.
+// const BASE_H = 874;
 const MAX_RATIO = 1.35;
 
 /** Vertical rhythm keys off width, not height: keying off height collapsed
@@ -49,21 +52,33 @@ export type Scale = {
   maxWidth: number | undefined;
 };
 
-/** The hook every component should use. Re-renders on any size change. */
+/**
+ * The hook every component should use. Re-renders on any size change.
+ *
+ * Memoized on width and height, so `w`, `h` and `f` keep their identity
+ * between renders. That is not a micro-optimisation: every screen builds its
+ * StyleSheet inside a `useMemo` keyed on these functions, and while they were
+ * re-allocated on each render the dependency array never compared equal, so
+ * `StyleSheet.create` re-ran on every render of every component in the app.
+ * Stable identities also let those memos list their real dependencies instead
+ * of fighting the exhaustive-deps rule.
+ */
 export function useScale(): Scale {
   const { width, height } = useWindowDimensions();
-  const isTablet = width >= 600;
-  return {
-    w: (n) => scaleFrom(width, n),
-    h: (n) => scaleFrom(width, n),
-    f: (n) => fontFrom(width, n),
-    width,
-    height,
-    isTablet,
-    isSmall: width <= 360,
-    landscape: width > height,
-    maxWidth: isTablet ? contentMaxWidth : undefined,
-  };
+  return useMemo(() => {
+    const isTablet = width >= 600;
+    return {
+      w: (n: number) => scaleFrom(width, n),
+      h: (n: number) => scaleFrom(width, n),
+      f: (n: number) => fontFrom(width, n),
+      width,
+      height,
+      isTablet,
+      isSmall: width <= 360,
+      landscape: width > height,
+      maxWidth: isTablet ? contentMaxWidth : undefined,
+    };
+  }, [width, height]);
 }
 
 export const contentMaxWidth = 560;

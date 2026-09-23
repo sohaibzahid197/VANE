@@ -275,7 +275,7 @@ export function Disclaimer() {
 
 /** Styles rebuilt whenever the window size changes. */
 export function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(
     () =>
       StyleSheet.create({
@@ -345,6 +345,6 @@ export function useStyles() {
           marginTop: h(16), lineHeight: f(16),
         },
       }),
-    [width, w, h, f],
+    [w, h, f],
   );
 }

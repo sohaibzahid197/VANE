@@ -56,11 +56,24 @@ const PRIVACY = 'https://sohaibzahid197.github.io/VANE-legal/privacy-policy.html
 // listed here while Alerts.tsx says those rows "are gone until there is a
 // sender behind them" — selling a feature that cannot be delivered is a 3.1.2
 // misrepresentation, and a 2.1 finding if a reviewer subscribes.
+//
+// Ordered by what is DIFFERENT, not by what is biggest. Competing apps list
+// 1,000+ tickers, entry and exit prices and stop-losses; on a feature count
+// VANE loses, and it cannot honestly ship any of them. What none of them
+// offer is the model's reasoning or a graded record of the user's own calls,
+// and that is what a disappointed buyer of those apps is actually looking
+// for — so the coin count comes last rather than first.
+// No coin count here. "All 27 remaining coins" would be a literal that goes
+// stale the moment the universe changes, and the free set is defined in the
+// pipeline, not the app. "Confidence bands" is also avoided: the calibration
+// gate is closed while no horizon beats the naive baseline, so `conf`
+// publishes as null — the uncertainty range on a PRICE TARGET is a different
+// thing and is genuinely shipped, so say that instead.
 const PERKS = [
-  'Every signal across all 30 coins',
-  'Model reasoning for every call',
-  '24h, 7d and 30d price targets',
-  'Full history and accuracy stats',
+  'The reasoning behind every call, not just the call',
+  'Every coin in the feed, not just the free ones',
+  '24h, 7d and 30d price targets with an uncertainty range',
+  'Your own calls graded automatically, win or lose',
 ];
 
 /** Billing periods per year, for the per-month comparison line. */
@@ -324,7 +337,7 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
         style={st.body}
         contentContainerStyle={st.bodyContent}
         showsVerticalScrollIndicator={false}>
-        <Text style={st.title} accessibilityRole="header">Every signal, unlocked.</Text>
+        <Text style={st.title} accessibilityRole="header">See why, not just what.</Text>
 
         <View style={st.perks}>
           {PERKS.map((p) => (
@@ -465,7 +478,7 @@ const periodWord = (p: PlanId) =>
   p === 'weekly' ? 'week' : p === 'monthly' ? 'month' : 'year';
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg, paddingHorizontal: w(18) },
   head: {
@@ -521,5 +534,5 @@ function useStyles() {
   },
   link: { color: C.dim, fontSize: f(11), textDecorationLine: 'underline' },
   linkDot: { color: C.faint, fontSize: f(11) },
-}), [width, w, h, f]);
+}), [w, h, f]);
 }

@@ -457,7 +457,7 @@ export default function CoinDetail({
 }
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
   head: {
     flexDirection: 'row', justifyContent: 'space-between',
@@ -510,5 +510,5 @@ function useStyles() {
   },
   callBtnText: { fontSize: f(14), fontWeight: '700' },
   callInner: { flexDirection: 'row', alignItems: 'center', gap: w(6) },
-}), [width, w, h, f]);
+}), [w, h, f]);
 }

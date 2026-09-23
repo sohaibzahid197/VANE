@@ -113,7 +113,7 @@ export default function Onboarding({
 }
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg, paddingHorizontal: w(18) },
   head: {
@@ -155,5 +155,5 @@ function useStyles() {
   foot: { paddingBottom: h(10) },
   dots: { flexDirection: 'row', gap: 6, justifyContent: 'center', marginBottom: h(18) },
   dot: { height: 6, borderRadius: 3 },
-}), [width, w, h, f]);
+}), [w, h, f]);
 }

@@ -115,7 +115,7 @@ export default function Settings({
             <Text style={st.subPlan}>Free</Text>
             {/* There is no daily quota and there never was — no counter exists
                 anywhere in the app. The free tier is BTC, always. */}
-            <Text style={st.subRenew}>Bitcoin only · upgrade for all coins</Text>
+            <Text style={st.subRenew}>Free selection · upgrade for all coins</Text>
             <Pressable
               onPress={onPaywall}
               accessibilityRole="button"
@@ -146,7 +146,7 @@ export default function Settings({
 }
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
   title: {
     color: C.text, fontSize: f(24), fontWeight: '700',
@@ -166,5 +166,5 @@ function useStyles() {
   version: {
     color: C.faint, fontSize: f(11), textAlign: 'center', marginTop: h(18),
   },
-}), [width, w, h, f]);
+}), [w, h, f]);
 }

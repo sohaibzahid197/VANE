@@ -111,7 +111,6 @@ export default function Signals({
   onPaywall: () => void;
 }) {
   const { tf, setTf, isPro, watchlist, toggleWatch } = useStore();
-  const s = useScale();
   const st = useStyles();
   const { data, polls, loading, error, reload } = useSignals();
 
@@ -161,7 +160,12 @@ export default function Signals({
             {/* Was "1 of 1 free signals used" / "Resets in 9h 12m" — both
                 literals, with no counter and no timer behind them. The free
                 tier is actually "BTC only, always", so say that. */}
-            <Text style={st.quotaTitle}>BTC free · unlock all 30 coins</Text>
+            {/* Derived, not a literal: the free set is chosen by the pipeline
+                (FREE_SYMBOLS) and the total is whatever it publishes, so any
+                number written here would be wrong the moment either changes. */}
+            <Text style={st.quotaTitle}>
+              {coins.length} coins free · unlock the full feed
+            </Text>
             <Text style={st.quotaSub}>
               Signals refresh through the day · not financial advice
             </Text>
@@ -200,7 +204,7 @@ export default function Signals({
 }
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
   head: {
     flexDirection: 'row', justifyContent: 'space-between',
@@ -256,5 +260,5 @@ function useStyles() {
     paddingVertical: h(10), paddingHorizontal: w(12), marginBottom: h(12),
   },
   staleText: { color: '#FF9EA1', fontSize: f(12), lineHeight: f(17) },
-}), [width, w, h, f]);
+}), [w, h, f]);
 }

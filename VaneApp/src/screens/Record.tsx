@@ -193,7 +193,7 @@ export default function Record() {
 }
 
 function useStyles() {
-  const { w, h, f, width } = useScale();
+  const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
   title: {
     color: C.text, fontSize: f(24), fontWeight: '700',
@@ -219,5 +219,5 @@ function useStyles() {
   pendingCard: { backgroundColor: tint(C.accent, 0.06), borderColor: tint(C.accent, 0.18) },
   pendingBig: { color: C.text, fontSize: f(17), fontWeight: '700' },
   pendingSub: { color: C.dim, fontSize: f(12), marginTop: h(3) },
-}), [width, w, h, f]);
+}), [w, h, f]);
 }
