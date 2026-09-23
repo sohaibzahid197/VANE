@@ -27,6 +27,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "predictions",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        {
+          "fieldPath": "resolved",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "placedAt",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "__name__",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -47,6 +65,20 @@
     {
       "collectionGroup": "votes",
       "fieldPath": "direction",
+      "indexes": [
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION"
+        },
+        {
+          "order": "ASCENDING",
+          "queryScope": "COLLECTION_GROUP"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "votes",
+      "fieldPath": "at",
       "indexes": [
         {
           "order": "ASCENDING",

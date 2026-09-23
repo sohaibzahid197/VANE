@@ -23,6 +23,10 @@ export type PriceMap = Record<string, number>;
  * per prediction (a user-stats counter, say) without silently breaking.
  */
 const PAGE = 200;
+
+/** The shortest horizon the app sells. A prediction younger than this cannot
+ *  be due whatever its timeframe. */
+const MIN_HORIZON_MS = Math.min(...Object.values(HORIZON_HOURS)) * 3_600_000;
 const MAX_PAGES = 20;
 
 /**
@@ -70,10 +74,26 @@ export async function resolvePredictions(
 
   let cursor: unknown = null;
 
+  // Nothing placed within the shortest horizon can possibly be due, so there
+  // is no reason to read it. Without this the query returned EVERY pending
+  // prediction on every run — ninety-six times a day, forever — and a user
+  // holding a 30D call kept it in the scan for a month. At around five
+  // hundred concurrently pending predictions that alone exhausted the free
+  // tier's fifty thousand daily reads, which is a few hundred users.
+  //
+  // `placedAt` already exists on every prediction and the rules already
+  // force it to the server timestamp, so this needs no schema change, no
+  // rules change and no migration.
+  const youngest = new Date(now - MIN_HORIZON_MS);
+
   for (let page = 0; page < MAX_PAGES; page++) {
     let q = db
       .collectionGroup('predictions')
       .where('resolved', '==', false)
+      .where('placedAt', '<=', youngest)
+      // Firestore requires the inequality field to be ordered first; the
+      // document name breaks ties so paging stays deterministic.
+      .orderBy('placedAt')
       .orderBy('__name__')
       .limit(PAGE);
     if (cursor) q = q.startAfter(cursor);
@@ -186,6 +206,23 @@ export async function resolvePredictions(
  * too few votes publishes null rather than a percentage built on three people.
  */
 const MIN_VOTES = 10;
+
+/**
+ * How far back a vote counts.
+ *
+ * The tally used to scan every vote ever cast, on every run — unbounded, and
+ * exhausting the free tier's daily reads at roughly five hundred lifetime
+ * votes, which is a hundred or so users. It could not be made incremental,
+ * because a user may change or delete a vote and the old direction would have
+ * to be decremented from a tally the pipeline cannot see.
+ *
+ * Bounding the window fixes the cost and is the better product anyway: this
+ * is "what the crowd thinks", shown beside a 24-hour signal. A vote from
+ * eight months ago is not an opinion about now. Seven days is long enough to
+ * clear the MIN_VOTES threshold on quieter coins and short enough that the
+ * tally tracks the market.
+ */
+const VOTE_WINDOW_MS = 7 * 24 * 3_600_000;
 const VOTE_PAGE = 1000;
 const VOTE_MAX_PAGES = 50;
 
@@ -199,7 +236,12 @@ export async function aggregatePolls(
   let truncated = true;
 
   for (let page = 0; page < VOTE_MAX_PAGES; page++) {
-    let q = db.collectionGroup('votes').orderBy('__name__').limit(VOTE_PAGE);
+    let q = db
+      .collectionGroup('votes')
+      .where('at', '>=', new Date(Date.now() - VOTE_WINDOW_MS))
+      .orderBy('at')
+      .orderBy('__name__')
+      .limit(VOTE_PAGE);
     if (cursor) q = q.startAfter(cursor);
 
     const snap = await q.get();
@@ -243,6 +285,9 @@ export async function aggregatePolls(
   await db.doc('public/polls').set({
     updatedAt: new Date().toISOString(),
     minVotes: MIN_VOTES,
+    // Published so the app can say what the tally covers rather than
+    // implying it is everyone who ever voted.
+    windowDays: VOTE_WINDOW_MS / (24 * 3_600_000),
     polls,
   });
 
