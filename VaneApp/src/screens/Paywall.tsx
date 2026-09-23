@@ -544,14 +544,25 @@ function useStyles() {
   // plan cards down onto the footer; when the content overflows (iPhone SE)
   // there is no slack to distribute and it degrades to a normal scroll.
   bodyContent: {
-    flexGrow: 1, justifyContent: 'space-between',
+    // flex-start, not space-between.
+    //
+    // `center` piled the slack above the title; `space-between` moved the
+    // same slack to the one seam between the pitch and the plan cards, which
+    // read as an unfinished middle. Neither distributes it usefully, because
+    // there are only two blocks. Anchoring to the top gives the gap a fixed,
+    // intentional size (perks.marginBottom) and lets any remaining slack fall
+    // below the cards, where the pinned footer already absorbs it.
+    flexGrow: 1, justifyContent: 'flex-start',
     paddingTop: h(16), paddingBottom: h(12),
   },
   title: {
     color: C.text, fontSize: f(29), fontWeight: '700',
     lineHeight: f(35), marginBottom: h(20),
   },
-  perks: { gap: h(10), marginBottom: h(24) },
+  // The single deliberate gap between the pitch and the pricing. This is the
+  // value to change if that seam ever looks wrong again — it is no longer at
+  // the mercy of how much slack the viewport happens to have.
+  perks: { gap: h(10), marginBottom: h(44) },
   perkRow: { flexDirection: 'row', alignItems: 'center', gap: w(10) },
   perkText: { color: C.dim, fontSize: f(14), flex: 1 },
 

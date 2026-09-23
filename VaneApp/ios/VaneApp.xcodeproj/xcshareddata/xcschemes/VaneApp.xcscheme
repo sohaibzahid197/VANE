@@ -60,7 +60,7 @@
             ReferencedContainer = "container:VaneApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-      </LaunchAction>
+   </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
       shouldUseLaunchSchemeArgsEnv = "YES"
