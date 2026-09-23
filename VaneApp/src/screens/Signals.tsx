@@ -8,7 +8,7 @@ import { useScale } from '../responsive.ts';
 import { Card, Disclaimer, ErrorState, Loading, Screen, Segmented, Text, tapSlop } from '../ui.tsx';
 import { HORIZONS, type Coin, type Horizon, seriesPath, toPath } from '../signals.ts';
 import { useStore } from '../store.tsx';
-import { MONETIZATION, isCoinLocked } from '../config.ts';
+import { isCoinLocked } from '../config.ts';
 import { relativeTime, useSignals } from '../useSignals.ts';
 import type { Polls } from '../api.ts';
 import { IconLock, IconStar } from '../icons.tsx';
@@ -148,11 +148,14 @@ export default function Signals({
         </View>
       </View>
 
+      {/* Not a Pressable. The Paywall route is only registered when
+          MONETIZATION is true (Navigation.tsx), so onPaywall was a no-op here
+          — a button on the first screen labelled "Upgrade to Pro" that did
+          nothing, which is a Guideline 2.1 rejection. The old label also
+          advertised "1 of 1 free signals used", a quota the app does not have.
+          When monetization ships, restore the Pressable WITH the route. */}
       {!isPro && (
-        <Pressable
-          onPress={onPaywall}
-          accessibilityRole="button"
-          accessibilityLabel="1 of 1 free signals used. Upgrade to Pro.">
+        <View accessible accessibilityRole="summary">
           <View style={st.quota}>
             {/* Was "1 of 1 free signals used" / "Resets in 9h 12m" — both
                 literals, with no counter and no timer behind them. The free
@@ -162,7 +165,7 @@ export default function Signals({
               Signals refresh through the day · not financial advice
             </Text>
           </View>
-        </Pressable>
+        </View>
       )}
 
       {error && data ? (

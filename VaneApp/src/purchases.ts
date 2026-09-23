@@ -131,8 +131,12 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
     };
 
     const offUpdate = purchaseUpdatedListener((purchase: any) => {
-      const id = purchase?.id ?? purchase?.productId;
-      if (id && id !== sku) return;
+      // `productId` is the SKU. `id` is the TRANSACTION id and is always
+      // present, so reading `id` first meant this comparison was always true
+      // and every purchase event was discarded — the promise would hang
+      // forever after a successful payment.
+      const productId = purchase?.productId;
+      if (productId !== sku) return;
       done({ status: 'purchased', transaction: purchase });
     });
 
@@ -147,10 +151,15 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
         done({ status: 'failed', reason: 'Store unavailable.' });
         return;
       }
+      // The platform keys are `apple` and `google`. They are NOT `ios` and
+      // `android`: react-native-iap reads `request.apple.sku` directly and
+      // throws EmptySkuList when it is missing, so the wrong key made every
+      // purchase fail instantly. An `as any` here previously suppressed the
+      // compile error that would have caught it — hence no cast now.
       await requestPurchase({
-        request: { ios: { sku }, android: { skus: [sku] } },
+        request: { apple: { sku }, google: { skus: [sku] } },
         type: 'subs',
-      } as any);
+      });
     })()
       .catch((e: any) => {
         const code = String(e?.code ?? '');
@@ -184,8 +193,13 @@ export async function complete(transaction: unknown): Promise<void> {
 export async function restore(): Promise<unknown[]> {
   if (!(await connect())) return [];
   try {
-    const purchases = (await getAvailablePurchases()) as unknown[];
-    return purchases ?? [];
+    const purchases = (await getAvailablePurchases()) as any[];
+    // Only our own subscriptions count. Returning the raw list meant an
+    // unrelated purchase under the same Apple Account satisfied the caller's
+    // "found something, grant Pro" check.
+    return (purchases ?? []).filter((p) =>
+      ALL_PRODUCT_IDS.includes(String(p?.productId)),
+    );
   } catch {
     return [];
   }

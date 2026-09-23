@@ -13,9 +13,10 @@ function openExternal(url: string) {
 }
 import { useScale } from '../responsive.ts';
 import { Card, Label, MIN_TAP, Screen, Text } from '../ui.tsx';
-import { PRO_ALERT, useStore } from '../store.tsx';
+import { useStore } from '../store.tsx';
 import { IconChevron } from '../icons.tsx';
 import { APP_VERSION, MONETIZATION } from '../config.ts';
+import { PLAN_LABEL } from '../products.ts';
 
 /** Apple and Google each own subscription management; deep-link out to them. */
 const MANAGE_URL = Platform.select({
@@ -33,7 +34,6 @@ export default function Settings({
   const { isPro, plan, alerts, signOut, deleteAccount, watchlist } = useStore();
   const s = useScale();
   const st = useStyles();
-  const yearly = plan === 'year';
 
   // Derived, not a literal. A hardcoded "3 on" went stale the moment the user
   // touched a toggle, and counted PRO rows a free user cannot even enable.
@@ -89,7 +89,12 @@ export default function Settings({
         {isPro ? (
           <>
             <Text style={st.subPlan}>
-              {yearly ? 'Yearly · $49.99' : 'Weekly · $6.99'}
+              {/* The plan NAME only. This line used to add a price, which
+                  was a fourth hardcoded figure disagreeing with the paywall
+                  and with App Store Connect, and it would still be wrong for
+                  anyone billed outside USD. The authoritative amount lives in
+                  the system subscription settings, one tap away below. */}
+              {PLAN_LABEL[plan]}
             </Text>
             {/* No receipt, no StoreKit query, therefore no renewal date. The
                 previous hardcoded "Renews 23 Sep 2027" stated a specific fact

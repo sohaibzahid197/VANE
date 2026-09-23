@@ -7,6 +7,7 @@
 // (it used to evaporate every cold start), and the track record is built from
 // server-resolved predictions rather than a hardcoded array.
 
+import type { PlanId } from './products.ts';
 import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
@@ -18,7 +19,17 @@ import {
   ensureSignedIn, fetchPredictions, placePrediction, signOutFirebase,
 } from './firebase.ts';
 
-export type Plan = 'week' | 'year';
+// The selected plan is a real StoreKit product id, not a display label, so
+// the paywall selection and the purchase request can never disagree.
+export type Plan = PlanId;
+
+/** Accept the old 'week' | 'year' values written before monthly existed. */
+function migratePlan(v: unknown): Plan {
+  if (v === 'weekly' || v === 'monthly' || v === 'yearly') return v;
+  if (v === 'week') return 'weekly';
+  if (v === 'year') return 'yearly';
+  return DEFAULTS.plan;
+}
 export type Call = { coin: string; dir: 'up' | 'down'; tf: Horizon };
 
 export type HistoryRow = {
@@ -58,7 +69,7 @@ type Persisted = {
 const DEFAULTS: Persisted = {
   onboarded: false,
   isPro: false,
-  plan: 'year',
+  plan: 'monthly',
   tf: '24H',
   alerts: DEFAULT_ALERTS,
   currency: 'USD',
@@ -118,7 +129,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             // Guard every field an older or newer build may have stored in a
             // shape this one cannot use. A null watchlist used to crash
             // toggleWatch and the Settings render outright.
-            plan: saved.plan === 'week' || saved.plan === 'year' ? saved.plan : DEFAULTS.plan,
+            // Migrate the pre-IAP two-plan vocabulary. A device that saved
+            // 'year' before monthly existed must not fall back to the default
+            // and silently lose the user's choice.
+            plan: migratePlan(saved.plan),
             tf:
               saved.tf === '24H' || saved.tf === '7D' || saved.tf === '30D'
                 ? saved.tf
