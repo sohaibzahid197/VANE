@@ -1,22 +1,24 @@
 // Build-level product switches.
 //
-// MONETIZATION is OFF for v1.0, deliberately.
+// MONETIZATION is ON.
 //
-// In-app purchases are not implemented. Shipping a paywall that advertises
-// "$49.99 / year" and a 3-day trial, then dead-ends on an alert, is an App
-// Store Guideline 2.1 rejection (non-functional feature) and a 3.1.2 problem
-// besides. It was also security theatre: entitlement was a boolean in
-// AsyncStorage, and the "locked" coins' full data was already on the device
-// inside a world-readable document — so the gate cost real users clarity
-// while stopping nobody.
+// It was off for as long as the paywall was theatre: prices were hardcoded
+// and contradictory, entitlement was a boolean in AsyncStorage, and every
+// "locked" coin's full data already sat on the device inside a world-readable
+// document. The gate cost honest users clarity while stopping nobody.
 //
-// Flipping this to true requires, in order:
-//   1. StoreKit 2 / Play Billing wired to real products
+// All four preconditions are now met:
+//   1. StoreKit wired to the real products, prices read from the store
 //   2. receipt validation writing users/{uid}/entitlement server-side
-//   3. the app reading entitlement from there, never from local storage
-//   4. the pipeline publishing locked coins to a SEPARATE gated document
-//      so the paid payload never reaches a free device
-export const MONETIZATION = false;
+//   3. the app reading entitlement from there, with the local flag demoted
+//      to an offline cache that is re-checked on every launch
+//   4. the pipeline publishing paid coins to a SEPARATE document that the
+//      security rules serve only to an entitled caller
+//
+// Note what isCoinLocked is NOT for any more: the server does not send a
+// non-subscriber the paid coins at all, so locking is about presentation —
+// what the free user is invited to buy — not about protecting data.
+export const MONETIZATION = true;
 
 /**
  * Single source of truth for the user-visible version.

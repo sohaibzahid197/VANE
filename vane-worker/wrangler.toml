@@ -1,0 +1,16 @@
+name = "vane-entitlement"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+# nodejs_compat is required for the Apple library's use of node:crypto shims.
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+BUNDLE_ID = "com.vane.app"
+FIREBASE_PROJECT_ID = "vane-crypto"
+
+# Secrets are set with `wrangler secret put NAME`, never committed:
+#   APPLE_KEY_ID          the .p8 key's id from App Store Connect
+#   APPLE_ISSUER_ID       the issuer id from Users and Access -> Integrations
+#   APPLE_PRIVATE_KEY     the .p8 file contents (PKCS#8 PEM)
+#   APPLE_APP_APPLE_ID    the numeric app id (6815321760)
+#   FIREBASE_SERVICE_ACCOUNT  the service account JSON

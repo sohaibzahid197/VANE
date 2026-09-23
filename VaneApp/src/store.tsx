@@ -13,6 +13,8 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Horizon } from './signals.ts';
+import { setEntitled } from './useSignals.ts';
+import { fetchEntitlement } from './entitlement.ts';
 import {
   type Prediction, type WriteResult,
   deleteAccount as deleteAccountRemote,
@@ -51,6 +53,9 @@ export const PRO_ALERT = [false, true, true, false, true] as const;
  * off (because `locked` suppressed them), so the moment a user subscribed,
  * notification channels they had never enabled switched themselves on.
  */
+/** The currency codes the app can actually format and publish prices in. */
+export const CURRENCIES = ['USD'] as const;
+
 const DEFAULT_ALERTS = [true, false, false, true, false];
 
 const STORAGE_KEY = 'vane.state.v1';
@@ -137,7 +142,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               saved.tf === '24H' || saved.tf === '7D' || saved.tf === '30D'
                 ? saved.tf
                 : DEFAULTS.tf,
-            currency: typeof saved.currency === 'string' ? saved.currency : DEFAULTS.currency,
+            // Checked against what the app actually supports, not merely
+            // "is a string": an invalid ISO code such as "" or "ZZZ" makes
+            // Intl.NumberFormat throw wherever a price is rendered.
+            currency: (CURRENCIES as readonly string[]).includes(String(saved.currency))
+              ? String(saved.currency)
+              : DEFAULTS.currency,
             watchlist: Array.isArray(saved.watchlist)
               ? saved.watchlist.filter((x): x is string => typeof x === 'string')
               : [],
@@ -146,9 +156,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             // Never trust a persisted array's length — an older build may
             // have stored fewer alert rows than the UI now renders.
             alerts:
-              Array.isArray(saved.alerts) && saved.alerts.length === DEFAULT_ALERTS.length
-                ? saved.alerts
-                : DEFAULT_ALERTS,
+              Array.isArray(saved.alerts) &&
+              saved.alerts.length === DEFAULT_ALERTS.length &&
+              // Element types matter as much as the length. A non-boolean
+              // reaches React Native's Switch as a `value` prop, and reaches
+              // the notification scheduler on cold start via loadAlertsAsync,
+              // before any provider exists to sanitise it.
+              saved.alerts.every((a: unknown) => typeof a === 'boolean')
+                ? [...saved.alerts]
+                // Copy, never hand out the shared module constant: a caller
+                // that mutates it would change the defaults for everyone.
+                : [...DEFAULT_ALERTS],
           }));
         }
       } catch {
@@ -165,6 +183,38 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated) return;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state)).catch(() => {});
   }, [state, hydrated]);
+
+  // Tell the signals store which document to ask for. It re-fetches on a
+  // change, so a user who has just subscribed sees all 30 coins without a
+  // restart, and one whose subscription lapsed drops back to the free set.
+  useEffect(() => {
+    if (!hydrated) return;
+    setEntitled(state.isPro);
+  }, [state.isPro, hydrated]);
+
+  // Re-check entitlement against the server on every launch.
+  //
+  // The persisted isPro is only a cache for the first frame and for offline
+  // launches. Without this the flag was write-once: nothing in the app ever
+  // set it back to false, so a cancelled, expired or refunded subscription
+  // stayed Pro indefinitely, and an edited AsyncStorage value was permanent.
+  //
+  // A null answer means the network failed, not that the user lapsed — the
+  // cached value survives, so a paying user on a bad connection keeps access.
+  useEffect(() => {
+    if (!hydrated) return;
+    let alive = true;
+    void (async () => {
+      const uid = await ensureSignedIn();
+      if (!uid || !alive) return;
+      const ent = await fetchEntitlement(uid);
+      if (!ent || !alive) return;
+      setState((prev) => (prev.isPro === ent.active ? prev : { ...prev, isPro: ent.active }));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [hydrated]);
 
   // Monotonic token: only the newest in-flight fetch may write state, so two
   // rapid calls cannot land out of order and resurrect a stale list.

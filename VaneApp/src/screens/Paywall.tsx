@@ -32,6 +32,7 @@ import { useStore } from '../store.tsx';
 import { IconClose, IconTick } from '../icons.tsx';
 import { PLAN_LABEL, PLAN_ORDER, type PlanId } from '../products.ts';
 import { buy, complete, loadOffers, restore, type PlanOffer } from '../purchases.ts';
+import { validatePurchase } from '../entitlement.ts';
 
 /** Opening a URL can reject (no handler, malformed link). Unhandled, that is
  *  a silent no-op for the user and a LogBox warning for us. */
@@ -192,14 +193,38 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
         return;
       }
 
-      // TODO(entitlement): the transaction should go to the receipt validator,
-      // which writes users/{uid}/entitlement, and this screen should read that
-      // back. Until that exists, entitlement is a local flag — good enough to
-      // exercise the flow, NOT good enough to ship as the only gate.
-      //
-      // Entitlement is granted BEFORE the transaction is finished. Finishing
-      // drops it from the StoreKit queue, so doing that first means a crash in
-      // between leaves the user charged with no entitlement and no replay.
+      // The server decides, not this screen. The transaction goes to the
+      // validator, which asks Apple what it really is and writes
+      // users/{uid}/entitlement — the document the security rules consult
+      // before serving the paid signals.
+      const txId = String(
+        (result.transaction as any)?.id ??
+          (result.transaction as any)?.transactionId ??
+          '',
+      );
+      const verdict = txId ? await validatePurchase(txId) : null;
+
+      if (!verdict) {
+        // Could not reach the validator. Do NOT finish the transaction:
+        // leaving it in the StoreKit queue is what makes the purchase
+        // replayable on next launch instead of lost.
+        Alert.alert(
+          'Almost there',
+          "Your purchase went through, but we couldn't confirm it just yet. " +
+            'Reopen the app when you have a connection and it will finish automatically.',
+        );
+        return;
+      }
+
+      if (!verdict.active) {
+        Alert.alert('Purchase not active', 'The store reported this subscription as inactive.');
+        await complete(result.transaction);
+        return;
+      }
+
+      // Entitlement first, then finish. Finishing drops the transaction from
+      // the queue, so the other order means a crash in between leaves the
+      // user charged with nothing and no replay.
       setPro(true);
       await complete(result.transaction);
       if (mounted.current) onClose();
@@ -219,6 +244,30 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
         Alert.alert('Nothing to restore', 'No previous purchase was found for this Apple Account.');
         return;
       }
+
+      // Every restored transaction is re-validated server side. The list
+      // alone proves nothing: it can contain lapsed or refunded
+      // subscriptions, and granting Pro for a non-empty array was a free
+      // subscription for anyone who had ever cancelled.
+      let active = false;
+      for (const p of found) {
+        const txId = String((p as any)?.id ?? (p as any)?.transactionId ?? '');
+        if (!txId) continue;
+        const verdict = await validatePurchase(txId);
+        if (verdict?.active) {
+          active = true;
+          break;
+        }
+      }
+
+      if (!active) {
+        Alert.alert(
+          'Nothing to restore',
+          'No active subscription was found for this Apple Account.',
+        );
+        return;
+      }
+
       setPro(true);
       Alert.alert('Restored', 'Your subscription is active again.');
       if (mounted.current) onClose();

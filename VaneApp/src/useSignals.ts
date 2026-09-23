@@ -39,6 +39,25 @@ let store: Store = {
 
 const listeners = new Set<() => void>();
 let inFlight: Promise<void> | null = null;
+
+/**
+ * Whether to ask for the entitlement-gated document.
+ *
+ * Module-level rather than a hook argument: this store is shared by every
+ * tab, and a per-caller flag would let one screen request the paid document
+ * while another requested the free one, so which payload won would depend on
+ * render order. `setEntitled` is called from the store provider when
+ * entitlement resolves, and forces a reload when it changes.
+ */
+let entitled = false;
+
+export function setEntitled(next: boolean): void {
+  if (entitled === next) return;
+  entitled = next;
+  // The cached snapshot belongs to the old entitlement. Re-fetch rather than
+  // showing 30 coins to someone who just lapsed, or 1 to someone who just paid.
+  void load(true).catch(() => {});
+}
 let hydrated = false;
 
 function setStore(next: Partial<Store>) {
@@ -82,7 +101,7 @@ async function load(force: boolean): Promise<void> {
       .catch(() => {});
 
     try {
-      const snap = await fetchSignals();
+      const snap = await fetchSignals(entitled);
       // An empty document is a pipeline failure, not an empty state.
       if (snap.coins.length === 0) throw new Error('No signals published yet');
       setStore({ data: snap, stale: false, error: null, fetchedAt: Date.now() });

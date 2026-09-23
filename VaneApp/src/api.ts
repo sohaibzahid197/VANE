@@ -1,15 +1,26 @@
-// Reads the single `public/signals_latest` document the pipeline publishes.
+// Reads the signals the pipeline publishes.
 //
-// Uses the Firestore REST API rather than @react-native-firebase: the document
-// is world-readable, so no SDK, no auth and no native module is needed for it.
-// That keeps the app's native surface small until auth actually lands.
+// There are TWO documents. `public/signals_latest` holds the free coins and
+// is world-readable. `private/signals_all` holds everything and is readable
+// only by a caller whose users/{uid}/entitlement/current document says they
+// have a live subscription — the security rules enforce that, so an
+// unentitled device never receives the paid payload at all.
+//
+// That split IS the paywall. The previous design published one world-readable
+// document and marked coins `locked` in the client, which labelled data the
+// device had already downloaded and left the whole product one curl away.
+//
+// Uses the Firestore REST API rather than @react-native-firebase, which keeps
+// the native surface small; the paid read simply carries a bearer token.
 
 import type { Coin, Horizon } from './signals.ts';
 import { appCheckHeader } from './appCheck.ts';
+import { idToken } from './firebase.ts';
 
 const PROJECT_ID = 'vane-crypto';
-const DOC = 'public/signals_latest';
-const URL = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${DOC}`;
+const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+const FREE_URL = `${BASE}/public/signals_latest`;
+const PAID_URL = `${BASE}/private/signals_all`;
 
 /** React Native's fetch has no default timeout; a stalled TCP hangs forever. */
 const TIMEOUT_MS = 12000;
@@ -87,19 +98,44 @@ export async function fetchPolls(): Promise<Polls> {
 
 const FALLBACK_HORIZONS: Horizon[] = ['24H', '7D', '30D'];
 
-export async function fetchSignals(): Promise<Snapshot> {
+/**
+ * Fetch the signals document.
+ *
+ * `entitled` is the app's belief about the subscription; the SERVER decides.
+ * If the rules disagree — a lapsed or refunded subscriber whose device has
+ * not caught up — the paid read returns 403 and we fall back to the free
+ * document rather than showing an error, so the app degrades to the shop
+ * window instead of breaking.
+ */
+export async function fetchSignals(entitled = false): Promise<Snapshot> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
 
   let body: any;
   try {
-    // Attested even though the document is world-readable: once App Check is
-    // enforced on Firestore, an unattested scraper can no longer burn the
-    // 50k/day read quota and take the app offline for real users.
-    const res = await fetch(URL, {
-      signal: ctl.signal,
-      headers: await appCheckHeader(),
-    });
+    // Attested even for the free document: once App Check is enforced on
+    // Firestore, an unattested scraper can no longer burn the 50k/day read
+    // quota and take the app offline for real users.
+    const headers = await appCheckHeader();
+
+    let res: Response | null = null;
+    if (entitled) {
+      const token = await idToken();
+      if (token) {
+        res = await fetch(PAID_URL, {
+          signal: ctl.signal,
+          headers: { ...headers, Authorization: `Bearer ${token}` },
+        });
+        // 401/403 means the server does not agree we are entitled. That is
+        // the expected path for an expired subscription, not an error.
+        if (res.status === 401 || res.status === 403) res = null;
+      }
+    }
+
+    if (!res) {
+      res = await fetch(FREE_URL, { signal: ctl.signal, headers });
+    }
+
     if (!res.ok) throw new Error(`Signals unavailable (${res.status})`);
     body = await res.json();
   } catch (e: any) {
@@ -129,10 +165,11 @@ export async function fetchSignals(): Promise<Snapshot> {
       conf: typeof c.conf === 'number' ? c.conf : null,
       targets,
       rating: c.up ? 'BUY' : 'SELL',
-      // Positional gating is a stopgap: the real gate is the server not
-      // sending locked detail at all. Keyed on symbol so a pipeline reorder
-      // cannot silently change which coin is free.
-      locked: String(c.sym) !== 'BTC',
+      // Nothing that arrives here is locked. The server decides what to send:
+      // an unentitled device receives only the free document, so every coin
+      // in this response is one the caller is allowed to see. This used to
+      // read `String(c.sym) !== 'BTC'`, a label on data already downloaded.
+      locked: false,
       reasons: Array.isArray(c.reasons) ? c.reasons : [],
       history: Array.isArray(c.history)
         ? c.history.filter((n: unknown): n is number => typeof n === 'number' && Number.isFinite(n))

@@ -44,3 +44,7 @@ coverage/
 
 # --- The legal pages are their own repository (VANE-legal) ---
 docs/
+
+# Worker dependencies and local wrangler state
+vane-worker/node_modules/
+vane-worker/.wrangler/

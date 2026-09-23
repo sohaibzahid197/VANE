@@ -9,11 +9,35 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    // Signals and poll tallies: world-readable, written only by the pipeline.
+    // True when this caller has a live subscription.
+    //
+    // The entitlement document is written ONLY by the receipt validator, via
+    // the admin SDK, which bypasses rules — so a client cannot mint one. The
+    // expiry check is what makes a lapsed or refunded subscriber lose access
+    // without anything having to run on the device.
+    function isEntitled() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/entitlement/current)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/entitlement/current).data.active == true
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/entitlement/current).data.expiresAt > request.time;
+    }
+
+    // Free tier and poll tallies: world-readable, written only by the pipeline.
     // The service account bypasses rules, so `write: false` still lets the
     // GitHub Actions job publish.
+    //
+    // ONLY the free coins live here. The paid dataset used to sit in this
+    // same document, which meant `allow read: if true` handed the whole
+    // product to anyone with curl.
     match /public/{doc=**} {
       allow read: if true;
+      allow write: if false;
+    }
+
+    // The paid dataset. This is the paywall — not the `locked` flag in the
+    // client, which was only ever a label on data already downloaded.
+    match /private/{doc=**} {
+      allow read: if isEntitled();
       allow write: if false;
     }
 
@@ -36,6 +60,8 @@ service cloud.firestore {
 
       // Entitlement is the paywall. The client may read it and must never
       // write it — only the receipt-validating Worker does, via the admin SDK.
+      // The document id is always `current`; isEntitled() reads it by that
+      // exact path, so the validator must not write any other id.
       match /entitlement/{doc} {
         allow read: if signedInAs(uid);
         allow write: if false;

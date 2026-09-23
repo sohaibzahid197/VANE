@@ -210,6 +210,17 @@ async function getSession(): Promise<Session | null> {
   return inFlight;
 }
 
+/**
+ * A bearer token for direct Firestore REST reads, or null when signed out.
+ *
+ * Exposed so api.ts can read the entitlement-gated signals document without
+ * duplicating the refresh-and-retry logic that lives in this module.
+ */
+export async function idToken(): Promise<string | null> {
+  const s = await getSession();
+  return s?.idToken ?? null;
+}
+
 export async function ensureSignedIn(): Promise<string | null> {
   return (await getSession())?.uid ?? null;
 }

@@ -148,24 +148,25 @@ export default function Signals({
         </View>
       </View>
 
-      {/* Not a Pressable. The Paywall route is only registered when
-          MONETIZATION is true (Navigation.tsx), so onPaywall was a no-op here
-          — a button on the first screen labelled "Upgrade to Pro" that did
-          nothing, which is a Guideline 2.1 rejection. The old label also
-          advertised "1 of 1 free signals used", a quota the app does not have.
-          When monetization ships, restore the Pressable WITH the route. */}
+      {/* Tappable again: MONETIZATION is on, so Navigation registers the
+          Paywall route and this no longer dead-ends. The label states what
+          the free tier actually is — the old one advertised "1 of 1 free
+          signals used", a quota that never existed. */}
       {!isPro && (
-        <View accessible accessibilityRole="summary">
+        <Pressable
+          onPress={onPaywall}
+          accessibilityRole="button"
+          accessibilityLabel="Free plan, BTC only. See Pro plans.">
           <View style={st.quota}>
             {/* Was "1 of 1 free signals used" / "Resets in 9h 12m" — both
                 literals, with no counter and no timer behind them. The free
                 tier is actually "BTC only, always", so say that. */}
-            <Text style={st.quotaTitle}>All {coins.length} coins, free</Text>
+            <Text style={st.quotaTitle}>BTC free · unlock all 30 coins</Text>
             <Text style={st.quotaSub}>
               Signals refresh through the day · not financial advice
             </Text>
           </View>
-        </View>
+        </Pressable>
       )}
 
       {error && data ? (

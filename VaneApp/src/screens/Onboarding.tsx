@@ -10,6 +10,13 @@ import { Button, Disclaimer, Text, tapSlop } from '../ui.tsx';
 import { MONETIZATION } from '../config.ts';
 import { spark, toPath } from '../signals.ts';
 
+// The figures in these cards are ILLUSTRATIVE, not live.
+//
+// They are frozen sample values used to show the shape of the product before
+// a user has signed in or seen real data. Every card is marked "EXAMPLE" on
+// screen, because an unlabelled "$126,400" next to a real-looking chart reads
+// as a current BTC price and a real forecast — which is the sort of claim
+// that makes every honest number in the app less believable.
 const SLIDES = [
   {
     title: 'Tomorrow, priced today.',
@@ -61,6 +68,9 @@ export default function Onboarding({
         <View style={st.card}>
           <View style={st.cardTop}>
             <Text style={st.cardLabel}>{slide.label}</Text>
+            <View style={st.exampleTag}>
+              <Text style={st.exampleText}>EXAMPLE</Text>
+            </View>
             <View style={st.tag}>
               <Text style={st.tagText}>{slide.tag}</Text>
             </View>
@@ -121,6 +131,14 @@ function useStyles() {
     marginBottom: h(28),
   },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  exampleTag: {
+    borderWidth: 1, borderColor: 'rgba(255,255,255,.22)',
+    borderRadius: w(5), paddingHorizontal: w(5), paddingVertical: h(2),
+    marginLeft: w(7),
+  },
+  exampleText: {
+    color: C.faint, fontSize: f(8), fontWeight: '700', letterSpacing: 0.8,
+  },
   cardLabel: { color: C.faint, fontSize: f(10), letterSpacing: 1.4, fontWeight: '600' },
   tag: {
     backgroundColor: tint(C.accent, 0.16), borderRadius: w(7),

@@ -127,9 +127,39 @@ export async function adminDb() {
   return getFirestore();
 }
 
-export async function publish(doc: unknown) {
+/**
+ * Coins any device may read without paying.
+ *
+ * This is the shop window, not a free tier — enough for the App Store listing
+ * to show a working app and for a buyer to judge the product before paying.
+ */
+export const FREE_SYMBOLS = ['BTC'] as const;
+
+const isFree = (sym: string) => (FREE_SYMBOLS as readonly string[]).includes(sym);
+
+/**
+ * Publish to TWO documents.
+ *
+ * Everything used to go into `public/signals_latest`, which the rules make
+ * world-readable — so the entire paid dataset (prices, 48h of history,
+ * confidence, all three targets and the model's reasons for all 30 coins) was
+ * one unauthenticated curl away, and the app's `locked` flag was a label
+ * applied AFTER the data had already been downloaded. No amount of client
+ * work closes that; splitting the document is the actual gate.
+ *
+ * The free document keeps the old path so an app build that predates this
+ * change keeps working instead of showing an empty screen.
+ */
+export async function publish(doc: { coins: CoinDoc[] } & Record<string, unknown>) {
   const db = await adminDb();
-  await db.doc('public/signals_latest').set(doc as object);
+  const free = { ...doc, coins: doc.coins.filter((c) => isFree(c.sym)) };
+
+  // Both writes in one batch: a device must never be able to observe a fresh
+  // free document beside a stale paid one, or vice versa.
+  const batch = db.batch();
+  batch.set(db.doc('public/signals_latest'), free);
+  batch.set(db.doc('private/signals_all'), doc);
+  await batch.commit();
 }
 
 const round = (n: number) => Number(n.toPrecision(8));

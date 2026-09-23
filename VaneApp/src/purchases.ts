@@ -204,3 +204,28 @@ export async function restore(): Promise<unknown[]> {
     return [];
   }
 }
+
+/**
+ * Listen for transactions that arrive outside a live `buy()` call.
+ *
+ * StoreKit replays an unfinished transaction on every launch, and a deferred
+ * purchase ("Ask to Buy") is approved by a parent long after the app has
+ * moved on. Registering listeners only inside `buy()` meant nothing was
+ * listening in either case: the user was charged, the transaction was never
+ * finished, and it was re-queued forever with no way to recover.
+ *
+ * Returns an unsubscribe function. Call this once at app start, not per
+ * screen, or a purchase can be handled twice.
+ */
+export function onPurchaseRecovered(
+  handler: (transaction: unknown, productId: string) => void | Promise<void>,
+): () => void {
+  const sub = purchaseUpdatedListener((purchase: any) => {
+    const productId = String(purchase?.productId ?? '');
+    // Only our own subscriptions, so an unrelated purchase in the same Apple
+    // Account cannot drive entitlement.
+    if (!ALL_PRODUCT_IDS.includes(productId)) return;
+    void handler(purchase, productId);
+  });
+  return () => sub?.remove?.();
+}

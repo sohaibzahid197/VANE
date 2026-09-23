@@ -7,7 +7,8 @@ import Navigation from './src/Navigation.tsx';
 import { ensureChannel, registerForPush, syncAlerts } from './src/notifications.ts';
 import { ensureSignedIn } from './src/firebase.ts';
 import { initAppCheck } from './src/appCheck.ts';
-import { loadOffers } from './src/purchases.ts';
+import { complete, loadOffers, onPurchaseRecovered } from './src/purchases.ts';
+import { validatePurchase } from './src/entitlement.ts';
 import { hasPermission } from './src/notifications.ts';
 import { loadAlertsAsync } from './src/store.tsx';
 
@@ -48,6 +49,23 @@ export default function App() {
       if (await hasPermission()) await syncAlerts(await loadAlertsAsync());
     })().catch(() => {});
 
+    // Recover transactions that arrive with no paywall on screen.
+    //
+    // StoreKit replays an unfinished transaction on every launch, and an
+    // "Ask to Buy" purchase is approved long after the sheet has gone. Until
+    // now nothing was listening for either: the user was charged, the
+    // transaction was never finished, and it was re-queued forever.
+    const offPurchase = onPurchaseRecovered(async (transaction) => {
+      const txId = String(
+        (transaction as any)?.id ?? (transaction as any)?.transactionId ?? '',
+      );
+      if (!txId) return;
+      const verdict = await validatePurchase(txId);
+      // Only finish once the server has recorded entitlement. A failure here
+      // leaves the transaction queued so the next launch tries again.
+      if (verdict?.active) await complete(transaction);
+    });
+
     let off: (() => void) | undefined;
     // Anonymous sign-in first: the FCM token is stored against the uid, so
     // registering before auth would write it nowhere.
@@ -58,7 +76,10 @@ export default function App() {
       })
       .catch(() => {});
 
-    return () => off?.();
+    return () => {
+      off?.();
+      offPurchase();
+    };
   }, []);
 
   return (

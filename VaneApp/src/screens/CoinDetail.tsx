@@ -7,7 +7,7 @@ import Svg, { Circle, Polygon, Polyline } from 'react-native-svg';
 import { C, tint } from '../theme.ts';
 import { useScale } from '../responsive.ts';
 import { BackHeader, Body, Button, Card, Disclaimer, EmptyState, Label, MIN_TAP, Pill, Screen, Segmented, Text } from '../ui.tsx';
-import { HORIZONS, SIGNALS, type Coin, type Horizon, seriesPath, toPath } from '../signals.ts';
+import { HORIZONS, type Coin, type Horizon, seriesPath, toPath } from '../signals.ts';
 import { useStore } from '../store.tsx';
 import { MONETIZATION, isCoinLocked } from '../config.ts';
 import { castVote, fetchMyVote, type Direction } from '../firebase.ts';
@@ -89,7 +89,12 @@ export default function CoinDetail({
     };
   }, [symbol]);
 
-  const list = coins && coins.length ? coins : SIGNALS;
+  // NO mock fallback. This used to fall back to the sample SIGNALS array,
+  // which rendered invented prices as live data — and, far worse, the call
+  // buttons below submit `entryPrice: coin.priceNum`, so a prediction placed
+  // during an outage wrote the sample 123410 into Firestore as a real entry
+  // price and permanently corrupted the accuracy record.
+  const list = coins ?? [];
   const coin = list.find((c) => c.sym === symbol);
   const dir = coin ? (coin.up ? C.accent : C.down) : C.accent;
   const myCall = calls.find((c) => c.coin === coin?.sym);
