@@ -1,0 +1,96 @@
+{
+  "identifier" : "A1B2C3D4-VANE-STOREKIT-CONFIG",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_applicationInternalID" : "6815321760",
+    "_developerTeamID" : "",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 0,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "22408162",
+      "localizations" : [
+        {
+          "description" : "Every signal, every coin.",
+          "displayName" : "VANE Pro",
+          "locale" : "en_US"
+        }
+      ],
+      "name" : "VANE Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6815334009",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Every signal, every coin, billed once a year.",
+              "displayName" : "Yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.vane.app.pro.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "VANE Pro Yearly",
+          "subscriptionGroupID" : "22408162",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "14.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6815334010",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Every signal, every coin, billed monthly.",
+              "displayName" : "Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.vane.app.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "VANE Pro Monthly",
+          "subscriptionGroupID" : "22408162",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "6815334011",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Every signal, every coin, billed weekly.",
+              "displayName" : "Weekly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.vane.app.pro.weekly",
+          "recurringSubscriptionPeriod" : "P1W",
+          "referenceName" : "VANE Pro Weekly",
+          "subscriptionGroupID" : "22408162",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

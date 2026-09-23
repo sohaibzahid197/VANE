@@ -1,0 +1,97 @@
+rules_version = '2';
+
+// With no Cloud Functions on the Spark plan, these rules ARE the entire
+// authorization layer. Anything not explicitly allowed here is denied.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedInAs(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Signals and poll tallies: world-readable, written only by the pipeline.
+    // The service account bypasses rules, so `write: false` still lets the
+    // GitHub Actions job publish.
+    match /public/{doc=**} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedInAs(uid);
+
+      // Field-restricted. Without hasOnly(), a client could merge
+      // {tier: 'pro'} into its own user doc and defeat the paywall anywhere
+      // the app mirrors entitlement here to save a read.
+      allow create, update: if signedInAs(uid)
+        && request.resource.data.keys().hasOnly([
+             'displayName', 'currency', 'watchlist', 'fcmToken', 'createdAt'
+           ]);
+      // A user must be able to erase their own account. App Store guideline
+      // 5.1.1(v) requires in-app deletion for any app that creates accounts —
+      // anonymous auth creates one — and GDPR Art. 17 requires it regardless.
+      // There are no Cloud Functions on the Spark plan, so the client walks
+      // and deletes its own documents; that is why this is permitted.
+      allow delete: if signedInAs(uid);
+
+      // Entitlement is the paywall. The client may read it and must never
+      // write it — only the receipt-validating Worker does, via the admin SDK.
+      match /entitlement/{doc} {
+        allow read: if signedInAs(uid);
+        allow write: if false;
+      }
+
+      // Predictions are append-only AND server-timestamped. Validating only
+      // `resolved == false` was not enough: a client could post a backdated
+      // placedAt and hand-pick fifty winners it already knew the outcome of,
+      // manufacturing the perfect track record these rules exist to prevent.
+      match /predictions/{id} {
+        allow read: if signedInAs(uid);
+        // entryPrice is REQUIRED, not optional: the resolver grades against
+        // it, and a prediction without one can never be resolved — it would
+        // sit in the query window forever, eventually starving every newer
+        // prediction out of the 500-doc batch.
+        allow create: if signedInAs(uid)
+          && request.resource.data.keys().hasOnly(
+               ['coin', 'direction', 'tf', 'entryPrice', 'placedAt', 'resolved'])
+          && request.resource.data.keys().hasAll(
+               ['coin', 'direction', 'tf', 'entryPrice', 'placedAt', 'resolved'])
+          && request.resource.data.placedAt == request.time
+          && request.resource.data.resolved == false
+          && request.resource.data.direction in ['up', 'down']
+          && request.resource.data.tf in ['24H', '7D', '30D']
+          && request.resource.data.entryPrice is number
+          && request.resource.data.entryPrice > 0
+          && request.resource.data.coin is string
+          && request.resource.data.coin.size() <= 10;
+        // Update stays denied — only the server may grade a prediction, which
+        // is what stops a user marking their own losses as wins. Delete is
+        // allowed so the erasure path above can actually complete.
+        allow update: if false;
+        allow delete: if signedInAs(uid);
+      }
+
+      // One vote per coin per user; changeable, but never readable by others.
+      // Field-restricted like everything else: without hasOnly an
+      // authenticated client could stuff unbounded data into its own vote
+      // documents, which the public tally then reads.
+      // `write` is split because on a delete `request.resource` is null and
+      // reading .direction off it raises an evaluation error rather than a
+      // clean deny.
+      match /votes/{coinId} {
+        allow read: if signedInAs(uid);
+        allow create, update: if signedInAs(uid)
+          && request.resource.data.keys().hasOnly(['direction', 'at'])
+          && request.resource.data.direction in ['up', 'down']
+          && request.resource.data.at == request.time;
+        allow delete: if signedInAs(uid);
+      }
+    }
+
+    // Firestore already denies unmatched paths; this documents the intent and
+    // catches deeper subcollections nobody has thought of yet.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

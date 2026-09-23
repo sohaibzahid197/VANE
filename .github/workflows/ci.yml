@@ -1,0 +1,27 @@
+name: CI
+
+# Typecheck and tests gate CHANGES. The refresh cron does not run them, because
+# a 30-minute schedule re-validating an unchanged tree is pure Actions spend.
+on:
+  push:
+    paths: ['vane-pipeline/**', '.github/workflows/**']
+  pull_request:
+    paths: ['vane-pipeline/**', '.github/workflows/**']
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: vane-pipeline
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: vane-pipeline/package-lock.json
+      - run: npm ci || npm install
+      - run: npm run typecheck
+      - run: npm test

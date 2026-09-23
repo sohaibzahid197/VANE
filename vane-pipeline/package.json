@@ -1,0 +1,19 @@
+{
+  "name": "vane-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "backtest": "node --experimental-strip-types src/backtest.ts",
+    "refresh": "node --experimental-strip-types src/refresh.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\""
+  },
+  "dependencies": {
+    "firebase-admin": "^14.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^24.0.0"
+  }
+}

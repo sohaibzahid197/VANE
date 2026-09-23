@@ -1,0 +1,52 @@
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
+# Only @react-native-firebase/app and /messaging are native now — auth and
+# firestore go over REST (see src/firebase.ts), which removed the Swift-header
+# and gRPC modulemap problems that static linkage caused with those pods.
+# RNFirebase still defaults to SPM, which this project's linkage rejects.
+$RNFirebaseDisableSPM = true
+
+
+
+target 'VaneApp' do
+  config = use_native_modules!
+
+  # FirebaseCoreInternal is a Swift pod depending on GoogleUtilities, which
+  # ships no module map — Swift cannot import it under static linkage without
+  # one. Scoped to these two rather than enabled globally, because global
+  # modular headers breaks gRPC-C++'s own modulemap generation.
+  pod 'GoogleUtilities', :modular_headers => true
+  pod 'FirebaseCoreInternal', :modular_headers => true
+  # App Check's Swift core needs the same treatment.
+  pod 'RecaptchaInterop', :modular_headers => true
+
+
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # An absolute path to your application root.
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+      # :ccache_enabled => true
+    )
+  end
+end

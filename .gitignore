@@ -1,0 +1,46 @@
+# --- Secrets. Never commit any of these. ---
+# Firebase client config: not strictly secret (it ships in every binary) but
+# it identifies the project, and there is no reason for it to be in git.
+VaneApp/android/app/google-services.json
+VaneApp/ios/VaneApp/GoogleService-Info.plist
+VaneApp/src/firebaseConfig.ts
+
+# Android release signing. Losing this means never being able to update the
+# app on Play again; committing it means anyone can forge your builds.
+VaneApp/android/app/vane-release.keystore
+*.keystore
+!VaneApp/android/app/debug.keystore
+
+# Service accounts and env files
+**/service-account*.json
+**/*serviceAccount*.json
+.env
+.env.*
+!.env.example
+
+# --- Dependencies ---
+node_modules/
+VaneApp/ios/Pods/
+
+# --- Build output ---
+VaneApp/android/app/build/
+VaneApp/android/build/
+VaneApp/android/.gradle/
+VaneApp/android/.cxx/
+VaneApp/ios/build/
+VaneApp/ios/DerivedData/
+*.hprof
+*.apk
+*.aab
+*.ipa
+*.xcuserstate
+**/xcuserdata/
+
+# --- Tooling ---
+.DS_Store
+*.log
+.watchmanconfig
+coverage/
+
+# --- The legal pages are their own repository (VANE-legal) ---
+docs/

@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#08090B;font-family:'Space Grotesk',system-ui,sans-serif}
+a{color:#4EF0B0;text-decoration:none}a:hover{color:#7BF6C7}
+::-webkit-scrollbar{width:0;height:0}
+@keyframes vpulse{0%,100%{opacity:.55}50%{opacity:1}}
+</style></helmet>
+<section id="t1" style="padding:44px 48px 40px">
+<div style="display:flex;align-items:baseline;gap:10px;margin:0 0 6px">
+<a href="#t1" style="font:600 10px/1 'JetBrains Mono',monospace;padding:4px 8px;background:#4EF0B0;color:#08090B;border-radius:4px;text-decoration:none">1</a>
+<span style="font:600 13px/1.2 'Space Grotesk',sans-serif;color:#F2F4F3">VANE — AI crypto prediction app · iOS · dark premium</span>
+</div>
+<p style="margin:0 0 30px;font:400 12px/1.6 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45);max-width:760px">Hard paywall right after onboarding, weekly + yearly plans (RevenueCat-style trial, restore, auto-renew disclosure). Free tier = 1 signal per day; confidence, reasoning, long-range targets, alerts and full history are gated. All seven screens are live — tap through the carousel, switch plans, change timeframes, place a call.</p>
+<div style="display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start">
+
+<div id="1a" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1a" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1a</a>Onboarding carousel</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;display:flex;flex-direction:column;padding:76px 26px 44px;box-sizing:border-box;position:relative;overflow:hidden">
+<div style="position:absolute;top:-140px;left:-80px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(78,240,176,.16),transparent 70%);pointer-events:none"></div>
+<div style="display:flex;align-items:center;justify-content:space-between;position:relative">
+<span style="font:700 13px/1 'JetBrains Mono',monospace;letter-spacing:.28em;color:#4EF0B0">VANE</span>
+<span style="font:500 13px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.4)">Skip</span>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:26px;position:relative">
+<div style="height:206px;border-radius:22px;background:linear-gradient(180deg,#15181C,#101215);border:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;justify-content:space-between;padding:20px;box-sizing:border-box;box-shadow:0 24px 60px rgba(0,0,0,.5)">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.14em;color:rgba(242,244,243,.4)">{{ onbCardLabel }}</span>
+<span style="font:700 11px/1 'JetBrains Mono',monospace;color:#4EF0B0;padding:5px 8px;border-radius:6px;background:rgba(78,240,176,.12)">{{ onbCardTag }}</span>
+</div>
+<svg viewBox="0 0 320 90" preserveAspectRatio="none" style="width:100%;height:90px;overflow:visible">
+<polyline points="{{ onbSpark }}" fill="none" stroke="#4EF0B0" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"></polyline>
+<polyline points="{{ onbSparkFwd }}" fill="none" stroke="#4EF0B0" stroke-width="2.5" stroke-dasharray="5 5" opacity=".55"></polyline>
+</svg>
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<span style="font:700 30px/1 'JetBrains Mono',monospace;color:#F2F4F3">{{ onbCardBig }}</span>
+<span style="font:500 12px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45)">{{ onbCardSub }}</span>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<h1 style="margin:0;font:600 38px/1.06 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:#F2F4F3;text-wrap:pretty">{{ onbTitle }}</h1>
+<p style="margin:0;font:400 15px/1.55 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5);text-wrap:pretty">{{ onbBody }}</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:20px;position:relative">
+<div style="display:flex;gap:7px;justify-content:center">
+<sc-for list="{{ onbDots }}" as="d" hint-placeholder-count="3"><span style="width:{{ d.w }};height:6px;border-radius:3px;background:{{ d.bg }};transition:all .3s"></span></sc-for>
+</div>
+<button onClick="{{ onbNext }}" style="border:0;height:56px;border-radius:16px;background:#4EF0B0;color:#08090B;font:600 17px/1 'Space Grotesk',sans-serif;cursor:pointer;box-shadow:0 0 36px rgba(78,240,176,.3)" style-hover="background:#65F5C0">{{ onbCta }}</button>
+<p style="margin:0;text-align:center;font:400 11px/1.4 'Space Grotesk',sans-serif;color:rgba(242,244,243,.28)">Signals are probabilistic. Not financial advice.</p>
+</div>
+</div>
+</x-import>
+</div>
+
+<div id="1b" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1b" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1b</a>Paywall — weekly / yearly</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;display:flex;flex-direction:column;padding:64px 22px 30px;box-sizing:border-box;position:relative;overflow:hidden">
+<div style="position:absolute;top:-160px;right:-120px;width:440px;height:440px;border-radius:50%;background:radial-gradient(circle,rgba(78,240,176,.18),transparent 68%);pointer-events:none"></div>
+<div style="display:flex;justify-content:flex-end;position:relative"><span style="width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.07);color:rgba(242,244,243,.45);display:flex;align-items:center;justify-content:center;font:400 15px/1 'Space Grotesk',sans-serif">✕</span></div>
+<div style="position:relative;margin:14px 0 22px">
+<span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.2em;color:#4EF0B0">VANE PRO</span>
+<h1 style="margin:12px 0 10px;font:600 34px/1.08 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:#F2F4F3">Every signal.<br>Every timeframe.</h1>
+<p style="margin:0;font:400 14px/1.5 'Space Grotesk',sans-serif;color:rgba(242,244,243,.48)">68% directional accuracy across 4,180 resolved calls.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:11px;position:relative">
+<sc-for list="{{ perks }}" as="p" hint-placeholder-count="5">
+<div style="display:flex;align-items:center;gap:11px">
+<span style="width:19px;height:19px;border-radius:50%;background:rgba(78,240,176,.14);color:#4EF0B0;display:flex;align-items:center;justify-content:center;font:700 10px/1 'Space Grotesk',sans-serif;flex:none">✓</span>
+<span style="font:400 14.5px/1.35 'Space Grotesk',sans-serif;color:rgba(242,244,243,.82)">{{ p.t }}</span>
+</div>
+</sc-for>
+</div>
+<div style="flex:1"></div>
+<div style="display:flex;flex-direction:column;gap:10px;position:relative">
+<div onClick="{{ pickYear }}" style="border:{{ yearBorder }};background:{{ yearBg }};border-radius:18px;padding:16px 16px 15px;cursor:pointer;position:relative;box-shadow:{{ yearGlow }}">
+<span style="position:absolute;top:-9px;left:16px;font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;color:#08090B;background:#4EF0B0;padding:5px 8px;border-radius:5px">SAVE 86%</span>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:4px">
+<span style="font:600 17px/1 'Space Grotesk',sans-serif;color:#F2F4F3">Yearly</span>
+<span style="font:400 12.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45)">3 days free, then $49.99/year</span>
+</div>
+<div style="text-align:right"><div style="font:700 19px/1 'JetBrains Mono',monospace;color:#F2F4F3">$0.96</div><div style="font:400 11px/1.6 'Space Grotesk',sans-serif;color:rgba(242,244,243,.4)">per week</div></div>
+</div>
+</div>
+<div onClick="{{ pickWeek }}" style="border:{{ weekBorder }};background:{{ weekBg }};border-radius:18px;padding:16px;cursor:pointer;box-shadow:{{ weekGlow }}">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;flex-direction:column;gap:4px">
+<span style="font:600 17px/1 'Space Grotesk',sans-serif;color:#F2F4F3">Weekly</span>
+<span style="font:400 12.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45)">Billed every week, cancel anytime</span>
+</div>
+<div style="text-align:right"><div style="font:700 19px/1 'JetBrains Mono',monospace;color:#F2F4F3">$6.99</div><div style="font:400 11px/1.6 'Space Grotesk',sans-serif;color:rgba(242,244,243,.4)">per week</div></div>
+</div>
+</div>
+<button style="border:0;height:56px;border-radius:16px;background:#4EF0B0;color:#08090B;font:600 17px/1 'Space Grotesk',sans-serif;cursor:pointer;box-shadow:0 0 36px rgba(78,240,176,.3);margin-top:4px" style-hover="background:#65F5C0">{{ payCta }}</button>
+<p style="margin:2px 0 0;text-align:center;font:400 11px/1.5 'Space Grotesk',sans-serif;color:rgba(242,244,243,.32)">{{ payFine }}</p>
+<div style="display:flex;justify-content:center;gap:18px;font:400 11.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.4)">
+<span>Restore</span><span>Terms</span><span>Privacy</span>
+</div>
+</div>
+</div>
+</x-import>
+</div>
+
+<div id="1c" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1c" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1c</a>Today's signals (free tier)</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden">
+<div style="padding:62px 20px 12px">
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<div><div style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.16em;color:rgba(242,244,243,.38)">FRI 1 AUG</div><h1 style="margin:8px 0 0;font:600 33px/1 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:#F2F4F3">Today</h1></div>
+<div style="display:flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;background:rgba(78,240,176,.1);border:1px solid rgba(78,240,176,.22)"><span style="width:6px;height:6px;border-radius:50%;background:#4EF0B0;animation:vpulse 1.8s infinite"></span><span style="font:600 11.5px/1 'JetBrains Mono',monospace;color:#4EF0B0">LIVE</span></div>
+</div>
+<div style="display:flex;gap:6px;margin-top:18px;padding:4px;border-radius:12px;background:rgba(255,255,255,.05)">
+<sc-for list="{{ tfs }}" as="t" hint-placeholder-count="3">
+<div onClick="{{ t.on }}" style="flex:1;text-align:center;padding:9px 0;border-radius:9px;background:{{ t.bg }};color:{{ t.fg }};font:600 13px/1 'JetBrains Mono',monospace;cursor:pointer;transition:all .2s">{{ t.label }}</div>
+</sc-for>
+</div>
+</div>
+<div style="flex:1;overflow:auto;padding:6px 20px 20px">
+<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);margin-bottom:14px">
+<div style="flex:1"><div style="font:600 13px/1.3 'Space Grotesk',sans-serif;color:#F2F4F3">{{ freeTitle }}</div><div style="font:400 11.5px/1.4 'Space Grotesk',sans-serif;color:rgba(242,244,243,.42)">{{ freeSub }}</div></div>
+<span style="font:600 12px/1 'Space Grotesk',sans-serif;color:#08090B;background:#4EF0B0;padding:9px 13px;border-radius:9px">Unlock</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<sc-for list="{{ signals }}" as="s" hint-placeholder-count="5">
+<div style="position:relative;border-radius:18px;background:#13161A;border:1px solid rgba(255,255,255,.07);padding:16px;overflow:hidden">
+<div style="filter:{{ s.blur }};display:flex;flex-direction:column;gap:13px">
+<div style="display:flex;align-items:center;gap:11px">
+<span style="width:34px;height:34px;border-radius:10px;background:{{ s.tint }};color:{{ s.dirColor }};display:flex;align-items:center;justify-content:center;font:700 12px/1 'JetBrains Mono',monospace">{{ s.sym }}</span>
+<div style="flex:1"><div style="font:600 15.5px/1.2 'Space Grotesk',sans-serif;color:#F2F4F3">{{ s.name }}</div><div style="font:400 12px/1.4 'JetBrains Mono',monospace;color:rgba(242,244,243,.42)">{{ s.price }}</div></div>
+<div style="text-align:right"><div style="font:700 15px/1.1 'Space Grotesk',sans-serif;color:{{ s.dirColor }}">{{ s.arrow }} {{ s.conf }}</div><div style="font:400 11px/1.5 'JetBrains Mono',monospace;color:rgba(242,244,243,.38)">confidence</div></div>
+</div>
+<div style="height:5px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden"><div style="width:{{ s.conf }};height:100%;background:{{ s.dirColor }};border-radius:3px"></div></div>
+<div style="display:flex;align-items:center;justify-content:space-between">
+<span style="font:400 12.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)">{{ s.tfLabel }} target <span style="font:600 12.5px 'JetBrains Mono',monospace;color:#F2F4F3">{{ s.target }}</span></span>
+<span style="font:700 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;padding:5px 8px;border-radius:6px;background:{{ s.tint }};color:{{ s.dirColor }}">{{ s.rating }}</span>
+</div>
+</div>
+<div style="display:{{ s.lockDisplay }};position:absolute;inset:0;align-items:center;justify-content:center;background:rgba(11,12,14,.4)">
+<span style="display:flex;align-items:center;gap:7px;padding:9px 14px;border-radius:999px;background:rgba(20,22,26,.92);border:1px solid rgba(255,255,255,.12);font:600 12.5px/1 'Space Grotesk',sans-serif;color:#F2F4F3">🔒 Unlock with Pro</span>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;padding:10px 8px 30px;border-top:1px solid rgba(255,255,255,.06);background:rgba(11,12,14,.9)">
+<sc-for list="{{ tabsHome }}" as="tb" hint-placeholder-count="4">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px"><span style="font-size:17px;line-height:1;filter:{{ tb.f }}">{{ tb.icon }}</span><span style="font:500 10.5px/1 'Space Grotesk',sans-serif;color:{{ tb.c }}">{{ tb.label }}</span></div>
+</sc-for>
+</div>
+</div>
+</x-import>
+</div>
+
+<div id="1d" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1d" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1d</a>Coin detail — forecast, poll, your call</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;overflow:auto;box-sizing:border-box;padding:62px 20px 40px">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+<span style="font:400 20px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.6)">‹</span>
+<span style="font:600 14px/1 'Space Grotesk',sans-serif;color:#F2F4F3">Bitcoin · BTC</span>
+<span style="font:400 16px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)">☆</span>
+</div>
+<div style="display:flex;align-items:flex-end;justify-content:space-between">
+<div><div style="font:700 40px/1 'JetBrains Mono',monospace;letter-spacing:-.02em;color:#F2F4F3">$123,410</div><div style="margin-top:8px;font:500 13px/1 'JetBrains Mono',monospace;color:#4EF0B0">▲ 1.82% · 24h</div></div>
+<div style="text-align:right"><div style="font:700 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.1em;color:#4EF0B0;padding:6px 9px;border-radius:6px;background:rgba(78,240,176,.12)">BUY</div></div>
+</div>
+<div style="margin:22px 0 6px;border-radius:20px;background:#13161A;border:1px solid rgba(255,255,255,.07);padding:16px">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+<span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.14em;color:rgba(242,244,243,.4)">PRICE + {{ tfLabel }} FORECAST</span>
+<span style="font:500 11px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.4)">band 80%</span>
+</div>
+<svg viewBox="0 0 340 150" preserveAspectRatio="none" style="width:100%;height:150px;overflow:visible">
+<polygon points="{{ bandPts }}" fill="rgba(78,240,176,.1)"></polygon>
+<polyline points="{{ histPts }}" fill="none" stroke="#F2F4F3" stroke-width="2" stroke-linejoin="round"></polyline>
+<polyline points="{{ fwdPts }}" fill="none" stroke="#4EF0B0" stroke-width="2.5" stroke-dasharray="6 5" stroke-linejoin="round"></polyline>
+<circle cx="{{ tgtX }}" cy="{{ tgtY }}" r="4.5" fill="#4EF0B0"></circle>
+</svg>
+<div style="display:flex;gap:6px;margin-top:12px;padding:4px;border-radius:12px;background:rgba(255,255,255,.05)">
+<sc-for list="{{ tfs }}" as="t" hint-placeholder-count="3">
+<div onClick="{{ t.on }}" style="flex:1;text-align:center;padding:8px 0;border-radius:9px;background:{{ t.bg }};color:{{ t.fg }};font:600 12.5px/1 'JetBrains Mono',monospace;cursor:pointer">{{ t.label }}</div>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;gap:10px;margin:14px 0">
+<sc-for list="{{ targets }}" as="tg" hint-placeholder-count="3">
+<div style="flex:1;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);padding:12px 11px">
+<div style="font:500 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.1em;color:rgba(242,244,243,.38)">{{ tg.k }}</div>
+<div style="margin-top:7px;font:700 14.5px/1 'JetBrains Mono',monospace;color:#F2F4F3">{{ tg.v }}</div>
+<div style="margin-top:5px;font:500 11.5px/1 'JetBrains Mono',monospace;color:{{ tg.c }}">{{ tg.d }}</div>
+</div>
+</sc-for>
+</div>
+<div style="border-radius:20px;background:#13161A;border:1px solid rgba(255,255,255,.07);padding:16px;margin-bottom:14px">
+<div style="display:flex;align-items:center;gap:14px">
+<div style="width:66px;height:66px;border-radius:50%;background:conic-gradient(#4EF0B0 {{ confTurn }},rgba(255,255,255,.08) 0);display:flex;align-items:center;justify-content:center;flex:none">
+<span style="width:52px;height:52px;border-radius:50%;background:#13161A;display:flex;align-items:center;justify-content:center;font:700 16px/1 'JetBrains Mono',monospace;color:#F2F4F3">{{ conf }}</span>
+</div>
+<div><div style="font:600 15.5px/1.2 'Space Grotesk',sans-serif;color:#F2F4F3">Bullish, {{ tfLabel }}</div><div style="margin-top:5px;font:400 12.5px/1.45 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45)">Model confidence, updated 4 min ago</div></div>
+</div>
+<div style="height:1px;background:rgba(255,255,255,.07);margin:14px 0"></div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ reasons }}" as="r" hint-placeholder-count="3">
+<div style="display:flex;gap:9px;align-items:flex-start"><span style="width:4px;height:4px;border-radius:50%;background:#4EF0B0;margin-top:7px;flex:none"></span><span style="font:400 13px/1.45 'Space Grotesk',sans-serif;color:rgba(242,244,243,.7)">{{ r.t }}</span></div>
+</sc-for>
+</div>
+</div>
+<div style="border-radius:20px;background:#13161A;border:1px solid rgba(255,255,255,.07);padding:16px;margin-bottom:14px">
+<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px"><span style="font:600 14px/1 'Space Grotesk',sans-serif;color:#F2F4F3">Community poll</span><span style="font:400 11.5px/1 'JetBrains Mono',monospace;color:rgba(242,244,243,.38)">8,412 votes</span></div>
+<div style="display:flex;height:34px;border-radius:10px;overflow:hidden;gap:3px">
+<div style="width:{{ pollUp }};background:rgba(78,240,176,.18);display:flex;align-items:center;padding-left:11px;font:700 12.5px/1 'JetBrains Mono',monospace;color:#4EF0B0">{{ pollUp }}</div>
+<div style="flex:1;background:rgba(255,90,95,.15);display:flex;align-items:center;justify-content:flex-end;padding-right:11px;font:700 12.5px/1 'JetBrains Mono',monospace;color:#FF7A7E">{{ pollDown }}</div>
+</div>
+<div style="display:flex;justify-content:space-between;margin-top:8px;font:400 11.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.38)"><span>Up</span><span>Down</span></div>
+</div>
+<div style="border-radius:20px;background:linear-gradient(180deg,#15181C,#101215);border:1px solid rgba(255,255,255,.08);padding:16px">
+<div style="font:600 14px/1 'Space Grotesk',sans-serif;color:#F2F4F3">{{ callTitle }}</div>
+<div style="margin-top:6px;font:400 12.5px/1.45 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45)">{{ callSub }}</div>
+<div style="display:flex;gap:10px;margin-top:14px">
+<div onClick="{{ callUp }}" style="flex:1;height:48px;border-radius:14px;background:{{ upBg }};border:{{ upBorder }};color:{{ upFg }};display:flex;align-items:center;justify-content:center;gap:7px;font:600 15px/1 'Space Grotesk',sans-serif;cursor:pointer">▲ Up</div>
+<div onClick="{{ callDown }}" style="flex:1;height:48px;border-radius:14px;background:{{ downBg }};border:{{ downBorder }};color:{{ downFg }};display:flex;align-items:center;justify-content:center;gap:7px;font:600 15px/1 'Space Grotesk',sans-serif;cursor:pointer">▼ Down</div>
+</div>
+</div>
+</div>
+</x-import>
+</div>
+
+<div id="1e" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1e" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1e</a>My track record</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden">
+<div style="padding:62px 20px 0">
+<h1 style="margin:0;font:600 33px/1 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:#F2F4F3">Track record</h1>
+<div style="margin-top:20px;border-radius:22px;background:linear-gradient(160deg,rgba(78,240,176,.14),rgba(19,22,26,.9));border:1px solid rgba(78,240,176,.2);padding:20px">
+<div style="display:flex;align-items:flex-end;gap:10px"><span style="font:700 52px/1 'JetBrains Mono',monospace;letter-spacing:-.03em;color:#F2F4F3">63%</span><span style="font:500 13px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5);padding-bottom:7px">your accuracy</span></div>
+<div style="display:flex;gap:22px;margin-top:18px">
+<div><div style="font:700 17px/1 'JetBrains Mono',monospace;color:#F2F4F3">19</div><div style="margin-top:5px;font:400 11.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.42)">resolved</div></div>
+<div><div style="font:700 17px/1 'JetBrains Mono',monospace;color:#F2F4F3">4</div><div style="margin-top:5px;font:400 11.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.42)">win streak</div></div>
+<div><div style="font:700 17px/1 'JetBrains Mono',monospace;color:#4EF0B0">SOL</div><div style="margin-top:5px;font:400 11.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.42)">best coin</div></div>
+</div>
+</div>
+<div style="display:flex;gap:8px;margin:18px 0 10px">
+<sc-for list="{{ recFilters }}" as="f" hint-placeholder-count="3">
+<div onClick="{{ f.on }}" style="padding:8px 14px;border-radius:999px;background:{{ f.bg }};color:{{ f.fg }};border:1px solid {{ f.bd }};font:600 12.5px/1 'Space Grotesk',sans-serif;cursor:pointer">{{ f.label }}</div>
+</sc-for>
+</div>
+</div>
+<div style="flex:1;overflow:auto;padding:4px 20px 16px;display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ history }}" as="h" hint-placeholder-count="6">
+<div style="display:flex;align-items:center;gap:12px;padding:14px;border-radius:16px;background:#13161A;border:1px solid rgba(255,255,255,.06)">
+<span style="width:30px;height:30px;border-radius:9px;background:{{ h.tint }};color:{{ h.color }};display:flex;align-items:center;justify-content:center;font:700 13px/1 'Space Grotesk',sans-serif;flex:none">{{ h.mark }}</span>
+<div style="flex:1"><div style="font:600 14px/1.2 'Space Grotesk',sans-serif;color:#F2F4F3">{{ h.coin }} <span style="font:500 12.5px 'JetBrains Mono',monospace;color:rgba(242,244,243,.45)">{{ h.call }}</span></div><div style="margin-top:4px;font:400 11.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.38)">{{ h.when }} · {{ h.tf }}</div></div>
+<span style="font:600 13px/1 'JetBrains Mono',monospace;color:{{ h.color }}">{{ h.delta }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;padding:10px 8px 30px;border-top:1px solid rgba(255,255,255,.06)">
+<sc-for list="{{ tabsMe }}" as="tb" hint-placeholder-count="4">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px"><span style="font-size:17px;line-height:1;filter:{{ tb.f }}">{{ tb.icon }}</span><span style="font:500 10.5px/1 'Space Grotesk',sans-serif;color:{{ tb.c }}">{{ tb.label }}</span></div>
+</sc-for>
+</div>
+</div>
+</x-import>
+</div>
+
+<div id="1f" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1f" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1f</a>Alerts (gated toggles)</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;box-sizing:border-box;overflow:auto;padding:62px 20px 40px">
+<h1 style="margin:0 0 8px;font:600 33px/1 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:#F2F4F3">Alerts</h1>
+<p style="margin:0 0 22px;font:400 13.5px/1.5 'Space Grotesk',sans-serif;color:rgba(242,244,243,.45)">Push only when the model changes its mind — never noise.</p>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ alerts }}" as="a" hint-placeholder-count="5">
+<div onClick="{{ a.on }}" style="display:flex;align-items:center;gap:13px;padding:15px 16px;border-radius:16px;background:#13161A;border:1px solid rgba(255,255,255,.06);cursor:pointer">
+<div style="flex:1">
+<div style="display:flex;align-items:center;gap:8px"><span style="font:600 14.5px/1.2 'Space Grotesk',sans-serif;color:#F2F4F3">{{ a.title }}</span><span style="display:{{ a.proDisplay }};font:700 9.5px/1 'JetBrains Mono',monospace;letter-spacing:.08em;padding:4px 6px;border-radius:5px;background:rgba(78,240,176,.13);color:#4EF0B0">PRO</span></div>
+<div style="margin-top:5px;font:400 12px/1.4 'Space Grotesk',sans-serif;color:rgba(242,244,243,.42)">{{ a.sub }}</div>
+</div>
+<div style="width:48px;height:29px;border-radius:999px;background:{{ a.trackBg }};padding:2.5px;box-sizing:border-box;flex:none;transition:background .2s"><div style="width:24px;height:24px;border-radius:50%;background:#fff;transform:translateX({{ a.knobX }});transition:transform .2s"></div></div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:22px;padding:16px;border-radius:16px;background:rgba(78,240,176,.07);border:1px solid rgba(78,240,176,.18)">
+<div style="font:600 14px/1.2 'Space Grotesk',sans-serif;color:#F2F4F3">Quiet hours</div>
+<div style="margin-top:6px;font:400 12.5px/1.45 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)">No pushes 23:00 – 07:00 local. Target-hit alerts still queue.</div>
+</div>
+</div>
+</x-import>
+</div>
+
+<div id="1g" style="display:flex;flex-direction:column;gap:10px;flex:none">
+<div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)"><a href="#1g" style="font:600 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(255,255,255,.09);color:#F2F4F3;border-radius:5px;text-decoration:none">1g</a>Settings + manage subscription</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ true }}" hint-size="402px,874px">
+<div style="height:100%;background:#0B0C0E;box-sizing:border-box;overflow:auto;padding:62px 20px 40px">
+<h1 style="margin:0 0 20px;font:600 33px/1 'Space Grotesk',sans-serif;letter-spacing:-.02em;color:#F2F4F3">Settings</h1>
+<div style="border-radius:20px;background:linear-gradient(160deg,rgba(78,240,176,.16),rgba(19,22,26,.9));border:1px solid rgba(78,240,176,.22);padding:18px">
+<div style="display:flex;align-items:center;justify-content:space-between">
+<div><div style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.18em;color:#4EF0B0">VANE PRO</div><div style="margin-top:9px;font:600 18px/1 'Space Grotesk',sans-serif;color:#F2F4F3">{{ subPlanName }}</div><div style="margin-top:7px;font:400 12.5px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.5)">{{ subRenew }}</div></div>
+<span style="font:600 12.5px/1 'Space Grotesk',sans-serif;color:#08090B;background:#4EF0B0;padding:10px 14px;border-radius:10px">Manage</span>
+</div>
+</div>
+<div style="margin-top:20px;border-radius:18px;background:#13161A;border:1px solid rgba(255,255,255,.06);overflow:hidden">
+<sc-for list="{{ settingsRows }}" as="r" hint-placeholder-count="6">
+<div style="display:flex;align-items:center;gap:12px;padding:15px 16px;border-bottom:1px solid rgba(255,255,255,.05)">
+<span style="flex:1;font:500 14.5px/1 'Space Grotesk',sans-serif;color:{{ r.color }}">{{ r.label }}</span>
+<span style="font:400 13px/1 'JetBrains Mono',monospace;color:rgba(242,244,243,.38)">{{ r.value }}</span>
+<span style="font:400 15px/1 'Space Grotesk',sans-serif;color:rgba(242,244,243,.25)">›</span>
+</div>
+</sc-for>
+</div>
+<p style="margin:22px 0 0;font:400 11.5px/1.6 'Space Grotesk',sans-serif;color:rgba(242,244,243,.3)">Subscriptions are billed through your App Store account and renew automatically unless cancelled at least 24 hours before the period ends. Purchases and entitlements are handled by RevenueCat.</p>
+<p style="margin:12px 0 0;font:400 11px/1 'JetBrains Mono',monospace;color:rgba(242,244,243,.22)">Vane 1.0.4 (218)</p>
+</div>
+</x-import>
+</div>
+
+</div>
+<p style="margin:30px 0 0;font:400 12px/1.5 'Space Grotesk',sans-serif;color:rgba(242,244,243,.4)">Try next: "give me 2 more paywall layouts" · "make <a href="#1c">1c</a> a full-bleed hero signal instead of a list" · "add a trial-ended / win-back state"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4EF0B0&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#4EF0B0&quot;,&quot;#7AA2FF&quot;,&quot;#C6FF4E&quot;,&quot;#FF8A4E&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;hardPaywall&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Monetization&quot;},&quot;trialDays&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:3,&quot;min&quot;:0,&quot;max&quot;:14,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Monetization&quot;}}">
+const DN = '#FF5A5F', TXT = '#F2F4F3';
+const SLIDES = [
+  { title: 'Tomorrow, priced today.', body: 'Direction, confidence and a price target for every major coin — refreshed every 15 minutes.', label: 'BTC · 24H SIGNAL', tag: '87% UP', big: '$126,400', sub: 'target +2.4%' },
+  { title: 'Read the crowd, then beat it.', body: 'See where 8,000+ traders are leaning and how often the crowd is actually right.', label: 'CROWD VS MODEL', tag: 'DIVERGING', big: '64/36', sub: 'up / down votes' },
+  { title: 'Keep score of your calls.', body: 'Place your own prediction, get graded automatically, and watch your accuracy compound.', label: 'YOUR RECORD', tag: '+4 STREAK', big: '63%', sub: '19 resolved' }
+];
+const SIG = [
+  { sym: 'BTC', name: 'Bitcoin', price: '$123,410', up: true, conf: 87, t: { '24H': ['$126,400', '+2.4%'], '7D': ['$131,900', '+6.9%'], '30D': ['$142,000', '+15.1%'] }, rating: 'BUY', locked: false },
+  { sym: 'ETH', name: 'Ethereum', price: '$4,182', up: true, conf: 74, t: { '24H': ['$4,290', '+2.6%'], '7D': ['$4,510', '+7.8%'], '30D': ['$4,980', '+19.1%'] }, rating: 'BUY', locked: true },
+  { sym: 'SOL', name: 'Solana', price: '$214.60', up: false, conf: 61, t: { '24H': ['$206.10', '-4.0%'], '7D': ['$198.40', '-7.5%'], '30D': ['$188.00', '-12.4%'] }, rating: 'SELL', locked: true },
+  { sym: 'XRP', name: 'XRP', price: '$3.08', up: true, conf: 68, t: { '24H': ['$3.19', '+3.5%'], '7D': ['$3.34', '+8.4%'], '30D': ['$3.55', '+15.3%'] }, rating: 'HOLD', locked: true },
+  { sym: 'DOGE', name: 'Dogecoin', price: '$0.284', up: false, conf: 55, t: { '24H': ['$0.271', '-4.6%'], '7D': ['$0.259', '-8.8%'], '30D': ['$0.240', '-15.5%'] }, rating: 'SELL', locked: true }
+];
+const CONF = { '24H': 87, '7D': 79, '30D': 66 };
+const REASONS = {
+  '24H': ['Spot ETF net inflows positive 6 sessions running', 'Funding rates neutral — little leverage to unwind', 'Realised volatility compressing into resistance'],
+  '7D': ['Weekly close above the 21-week mean', 'Exchange balances at a 4-year low', 'Two macro prints land midweek — widens the band'],
+  '30D': ['Post-halving supply pressure still easing', 'Momentum positive but stretched on monthly RSI', 'Model spread widens sharply past 3 weeks']
+};
+const HIST = [
+  { coin: 'SOL', call: 'DOWN 7D', when: 'Jul 28', tf: 'resolved', win: true, delta: '-8.1%' },
+  { coin: 'BTC', call: 'UP 24H', when: 'Jul 27', tf: 'resolved', win: true, delta: '+2.7%' },
+  { coin: 'ETH', call: 'UP 24H', when: 'Jul 26', tf: 'resolved', win: true, delta: '+1.4%' },
+  { coin: 'DOGE', call: 'UP 7D', when: 'Jul 24', tf: 'resolved', win: false, delta: '-5.2%' },
+  { coin: 'XRP', call: 'UP 24H', when: 'Jul 23', tf: 'resolved', win: true, delta: '+3.9%' },
+  { coin: 'BTC', call: 'DOWN 30D', when: 'Jul 20', tf: 'resolved', win: false, delta: '+11.3%' }
+];
+
+class Component extends DCLogic {
+  state = { onb: 0, plan: 'year', tf: '24H', call: null, recFilter: 'All', alerts: [true, true, false, true, false] };
+
+  spark(seed, n, w, h, up) {
+    let pts = [], v = 0.5;
+    for (let i = 0; i < n; i++) {
+      v += Math.sin((i + seed) * 1.7) * 0.09 + (up ? 0.022 : -0.02);
+      v = Math.max(0.1, Math.min(0.9, v));
+      pts.push([(i / (n - 1)) * w, h - v * h]);
+    }
+    return pts;
+  }
+  fmt(p) { return p.map(a => a[0].toFixed(1) + ',' + a[1].toFixed(1)).join(' '); }
+
+  renderVals() {
+    const s = this.state, tf = s.tf;
+    const ACC = this.props.accent ?? '#4EF0B0';
+    const trial = this.props.trialDays ?? 3;
+    const hard = this.props.hardPaywall ?? true;
+    const sl = SLIDES[s.onb];
+    const sp = this.spark(s.onb * 3 + 1, 22, 320, 90, s.onb !== 1);
+    const hist = this.spark(4, 20, 200, 150, true);
+    const last = hist[hist.length - 1];
+    const fwd = [last];
+    const fwdN = 6, rise = tf === '24H' ? 26 : tf === '7D' ? 48 : 66;
+    for (let i = 1; i <= fwdN; i++) fwd.push([200 + (140 / fwdN) * i, last[1] - (rise / fwdN) * i + Math.sin(i) * 4]);
+    const band = fwd.map(p => [p[0], p[1] - (p[0] - 200) * 0.16]).concat(fwd.slice().reverse().map(p => [p[0], p[1] + (p[0] - 200) * 0.2]));
+    const tgt = fwd[fwd.length - 1];
+    const rgba = (hex, a) => {
+      const h = hex.replace('#', '');
+      const n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+      return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+    };
+    const sel = (on) => on ? { bg: 'rgba(255,255,255,.1)', fg: TXT } : { bg: 'transparent', fg: 'rgba(242,244,243,.42)' };
+    const yr = s.plan === 'year';
+
+    return {
+      onbTitle: sl.title, onbBody: sl.body, onbCardLabel: sl.label, onbCardTag: sl.tag, onbCardBig: sl.big, onbCardSub: sl.sub,
+      onbSpark: this.fmt(sp.slice(0, 15)), onbSparkFwd: this.fmt(sp.slice(14)),
+      onbCta: s.onb === 2 ? (hard ? 'See plans' : 'Get started') : 'Continue',
+      freeTitle: hard ? 'Trial expired — signals locked' : '1 of 1 free signals used',
+      freeSub: hard ? 'Subscribe to keep every signal unlocked' : 'Resets in 9h 12m · Pro removes the limit',
+      onbDots: SLIDES.map((_, i) => ({ w: i === s.onb ? '22px' : '6px', bg: i === s.onb ? ACC : 'rgba(255,255,255,.18)' })),
+      onbNext: () => this.setState({ onb: (s.onb + 1) % 3 }),
+
+      perks: [
+        { t: 'Unlimited signals across 100 coins' },
+        { t: 'Confidence scores + model reasoning' },
+        { t: '24h, 7d and 30d price targets' },
+        { t: 'Push alerts when a signal flips' },
+        { t: 'Full history and accuracy stats' }
+      ],
+      pickYear: () => this.setState({ plan: 'year' }), pickWeek: () => this.setState({ plan: 'week' }),
+      yearBorder: yr ? '1.5px solid ' + ACC : '1.5px solid rgba(255,255,255,.09)',
+      weekBorder: !yr ? '1.5px solid ' + ACC : '1.5px solid rgba(255,255,255,.09)',
+      yearBg: yr ? rgba(ACC,.08) : 'rgba(255,255,255,.03)',
+      weekBg: !yr ? rgba(ACC,.08) : 'rgba(255,255,255,.03)',
+      yearGlow: yr ? '0 0 30px ' + rgba(ACC,.14) : 'none',
+      weekGlow: !yr ? '0 0 30px ' + rgba(ACC,.14) : 'none',
+      payCta: yr && trial > 0 ? 'Start ' + trial + '-day free trial' : 'Subscribe weekly',
+      payFine: yr && trial > 0 ? 'Free for ' + trial + ' days, then $49.99/year. Cancel anytime.' : '$6.99 per week, auto-renews. Cancel anytime.',
+
+      tfs: ['24H', '7D', '30D'].map(k => ({ label: k, ...sel(k === tf), on: () => this.setState({ tf: k }) })),
+      tfLabel: tf,
+      signals: SIG.map(x => ({
+        sym: x.sym, name: x.name, price: x.price, conf: x.conf + '%', arrow: x.up ? '▲' : '▼',
+        dirColor: x.up ? ACC : DN, tint: x.up ? rgba(ACC,.12) : 'rgba(255,90,95,.12)',
+        target: x.t[tf][0], tfLabel: tf, rating: x.rating,
+        blur: x.locked ? 'blur(5.5px)' : 'none', lockDisplay: x.locked ? 'flex' : 'none'
+      })),
+      tabsHome: [
+        { icon: '◈', label: 'Signals', c: ACC, f: 'none' },
+        { icon: '◎', label: 'Predict', c: 'rgba(242,244,243,.38)', f: 'grayscale(1)' },
+        { icon: '◍', label: 'Record', c: 'rgba(242,244,243,.38)', f: 'grayscale(1)' },
+        { icon: '◌', label: 'Settings', c: 'rgba(242,244,243,.38)', f: 'grayscale(1)' }
+      ],
+      tabsMe: [
+        { icon: '◈', label: 'Signals', c: 'rgba(242,244,243,.38)', f: 'grayscale(1)' },
+        { icon: '◎', label: 'Predict', c: 'rgba(242,244,243,.38)', f: 'grayscale(1)' },
+        { icon: '◍', label: 'Record', c: ACC, f: 'none' },
+        { icon: '◌', label: 'Settings', c: 'rgba(242,244,243,.38)', f: 'grayscale(1)' }
+      ],
+
+      histPts: this.fmt(hist), fwdPts: this.fmt(fwd), bandPts: this.fmt(band),
+      tgtX: tgt[0].toFixed(1), tgtY: tgt[1].toFixed(1),
+      targets: ['24H', '7D', '30D'].map(k => ({ k, v: SIG[0].t[k][0], d: SIG[0].t[k][1], c: ACC })),
+      conf: CONF[tf] + '%', confTurn: (CONF[tf] / 100).toFixed(2) + 'turn',
+      reasons: REASONS[tf].map(t => ({ t })),
+      pollUp: '64%', pollDown: '36%',
+      callTitle: s.call ? 'Your call is in' : 'Make your own call',
+      callSub: s.call
+        ? 'You said ' + (s.call === 'up' ? 'UP' : 'DOWN') + ' on BTC for ' + tf + '. Grades automatically at close.'
+        : 'Grade yourself against the model over ' + tf + '.',
+      callUp: () => this.setState({ call: 'up' }), callDown: () => this.setState({ call: 'down' }),
+      upBg: s.call === 'up' ? ACC : rgba(ACC,.1), upFg: s.call === 'up' ? '#08090B' : ACC,
+      upBorder: '1px solid ' + rgba(ACC,.3),
+      downBg: s.call === 'down' ? DN : 'rgba(255,90,95,.1)', downFg: s.call === 'down' ? '#0B0C0E' : '#FF7A7E',
+      downBorder: '1px solid rgba(255,90,95,.28)',
+
+      recFilters: ['All', 'Wins', 'Losses'].map(k => ({
+        label: k, on: () => this.setState({ recFilter: k }),
+        bg: s.recFilter === k ? ACC : 'transparent',
+        fg: s.recFilter === k ? '#08090B' : 'rgba(242,244,243,.55)',
+        bd: s.recFilter === k ? ACC : 'rgba(255,255,255,.12)'
+      })),
+      history: HIST.filter(h => s.recFilter === 'All' || (s.recFilter === 'Wins') === h.win).map(h => ({
+        coin: h.coin, call: h.call, when: h.when, tf: h.tf, delta: h.delta,
+        mark: h.win ? '✓' : '✕', color: h.win ? ACC : DN,
+        tint: h.win ? rgba(ACC,.12) : 'rgba(255,90,95,.12)'
+      })),
+
+      alerts: [
+        ['Signal flips', 'When direction reverses on a coin you follow', false],
+        ['High conviction', 'Confidence crosses 80%', true],
+        ['Target hit', 'Price reaches a forecast target', true],
+        ['Daily digest', 'One summary at 08:00 local', false],
+        ['Crowd divergence', 'Community leans against the model', true]
+      ].map(([title, sub, pro], i) => ({
+        title, sub, proDisplay: pro ? 'inline-flex' : 'none',
+        trackBg: s.alerts[i] ? ACC : 'rgba(255,255,255,.14)',
+        knobX: s.alerts[i] ? '19px' : '0px',
+        on: () => this.setState({ alerts: s.alerts.map((v, j) => j === i ? !v : v) })
+      })),
+
+      subPlanName: yr ? 'Yearly · $49.99' : 'Weekly · $6.99',
+      subRenew: yr ? 'Renews 1 Aug 2027' + (trial > 0 ? ' · trial ended' : '') : 'Renews 8 Aug 2026',
+      settingsRows: [
+        { label: 'Restore purchases', value: '', color: TXT },
+        { label: 'Notifications', value: '3 on', color: TXT },
+        { label: 'Currency', value: 'USD', color: TXT },
+        { label: 'Watchlist', value: '8 coins', color: TXT },
+        { label: 'Terms of use', value: '', color: TXT },
+        { label: 'Privacy policy', value: '', color: TXT },
+        { label: 'Sign out', value: '', color: DN }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

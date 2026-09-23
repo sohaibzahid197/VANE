@@ -1,0 +1,15 @@
+name: keepalive
+
+# GitHub disables scheduled workflows after 60 days of repo inactivity.
+# If that happens the app silently serves stale signals, so nudge monthly.
+on:
+  schedule:
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git --version
