@@ -60,10 +60,7 @@
             ReferencedContainer = "container:VaneApp.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
-         <StoreKitConfigurationFileReference
-         identifier = "../../../VANE.storekit">
-      </StoreKitConfigurationFileReference>
-   </LaunchAction>
+      </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
       shouldUseLaunchSchemeArgsEnv = "YES"
