@@ -16,11 +16,31 @@ fi
 SA="$HOME/.config/vane/service-account.json"
 [ -f "$SA" ] || { echo "missing $SA" >&2; exit 1; }
 
-# The key id is in the filename Apple gives you: AuthKey_<KEYID>.p8
-KEY_ID="$(basename "$P8" .p8 | sed 's/^AuthKey_//')"
-echo "Key ID detected from filename: $KEY_ID"
+# The key id is in the filename Apple gives you. The prefix differs by key
+# type — an In-App Purchase key downloads as SubscriptionKey_<KEYID>.p8, an
+# App Store Connect API key as AuthKey_<KEYID>.p8 — so strip whichever is
+# there rather than assuming. A key id carrying the prefix is not rejected
+# locally: Apple simply refuses every JWT, and every purchase fails to
+# validate with no clue as to why.
+KEY_ID="$(basename "$P8" .p8 | sed -E 's/^(SubscriptionKey|AuthKey|InAppPurchaseKey)_//')"
+
+# Apple's key ids are 10 characters of uppercase letters and digits. Anything
+# else means the filename was renamed and the id must be typed by hand.
+if ! printf '%s' "$KEY_ID" | grep -qE '^[A-Z0-9]{10}$'; then
+  echo "Could not read a key id from the filename (got: '$KEY_ID')." >&2
+  read -r -p "Key ID (10 characters, shown next to the key in App Store Connect): " KEY_ID
+  printf '%s' "$KEY_ID" | grep -qE '^[A-Z0-9]{10}$' || { echo "That is not a valid key id." >&2; exit 1; }
+fi
+echo "Key ID: $KEY_ID"
+
 read -r -p "Issuer ID (from Users and Access > Integrations, above the Active table): " ISSUER_ID
-[ -n "$ISSUER_ID" ] || { echo "issuer id is required" >&2; exit 1; }
+# The issuer id is a UUID. Pasting the key id here by mistake is easy and the
+# only symptom would be Apple rejecting every request.
+if ! printf '%s' "$ISSUER_ID" | grep -qiE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
+  echo "That does not look like an Issuer ID — it should be a UUID like" >&2
+  echo "57246542-96fe-1a63-e053-0824d011072a, shown ABOVE the Active table." >&2
+  exit 1
+fi
 
 echo
 echo "Setting secrets..."
