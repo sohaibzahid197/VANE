@@ -35,6 +35,30 @@ const HOSTS: Record<Environment, string> = {
   Sandbox: 'https://api.storekit-sandbox.itunes.apple.com',
 };
 
+/**
+ * Both environments, in the order worth trying.
+ *
+ * A transaction exists in exactly one of them, and there is no way to know
+ * which without asking, so both must be tried before concluding anything.
+ */
+const ORDER: Environment[] = ['Production', 'Sandbox'];
+
+/**
+ * Should a failure on this host end the search, or just this attempt?
+ *
+ * 404 means "not here, try elsewhere" — that much was already handled. 401 is
+ * the one that matters: Apple answers 401 on the PRODUCTION host for an app
+ * that has never been released, which is every app before its first launch.
+ * Treating that as fatal aborted before Sandbox was ever tried, so every
+ * sandbox purchase returned 500 and the buyer was told the server could not
+ * confirm their payment. Verified directly: the same key and issuer id that
+ * return 200 on Sandbox return 401 on Production for this app.
+ *
+ * The failure is still reported if EVERY host rejects us — a genuinely bad
+ * key must not look like a missing transaction.
+ */
+const keepLooking = (status: number) => status === 404 || status === 401;
+
 /** Cached bearer, since Apple accepts a token for up to an hour. */
 let token: { value: string; expiresAt: number } | null = null;
 
@@ -63,12 +87,16 @@ export async function getSubscriptionStatus(
   cfg: AppleConfig,
   originalTransactionId: string,
 ): Promise<TransactionInfo | null> {
-  for (const env of ['Production', 'Sandbox'] as Environment[]) {
+  const refused: string[] = [];
+  for (const env of ORDER) {
     const res = await fetch(
       `${HOSTS[env]}/inApps/v1/subscriptions/${originalTransactionId}`,
       { headers: { Authorization: `Bearer ${await bearer(cfg)}` } },
     );
-    if (res.status === 404) continue;
+    if (keepLooking(res.status)) {
+      refused.push(`${env} ${res.status}`);
+      continue;
+    }
     if (!res.ok) throw new Error(`apple status ${env} ${res.status}: ${await res.text()}`);
 
     const body = (await res.json()) as {
@@ -86,6 +114,11 @@ export async function getSubscriptionStatus(
     }
     if (newest) return newest;
   }
+  // Every host said 401 means the credentials are wrong, not that the
+  // subscription is missing. Saying so beats a silent null.
+  if (refused.every((r) => r.endsWith('401'))) {
+    throw new Error(`apple rejected our key on every host: ${refused.join(', ')}`);
+  }
   return null;
 }
 
@@ -101,11 +134,15 @@ export async function getTransaction(
   cfg: AppleConfig,
   transactionId: string,
 ): Promise<TransactionInfo | null> {
-  for (const env of ['Production', 'Sandbox'] as Environment[]) {
+  const refused: string[] = [];
+  for (const env of ORDER) {
     const res = await fetch(`${HOSTS[env]}/inApps/v1/transactions/${transactionId}`, {
       headers: { Authorization: `Bearer ${await bearer(cfg)}` },
     });
-    if (res.status === 404) continue;
+    if (keepLooking(res.status)) {
+      refused.push(`${env} ${res.status}`);
+      continue;
+    }
     if (!res.ok) throw new Error(`apple ${env} ${res.status}: ${await res.text()}`);
 
     const { signedTransactionInfo } = (await res.json()) as { signedTransactionInfo: string };
@@ -116,6 +153,9 @@ export async function getTransaction(
       throw new Error('transaction signature failed verification');
     }
     return decodeJws<TransactionInfo>(signedTransactionInfo).payload;
+  }
+  if (refused.length > 0 && refused.every((r) => r.endsWith('401'))) {
+    throw new Error(`apple rejected our key on every host: ${refused.join(', ')}`);
   }
   return null;
 }

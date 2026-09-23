@@ -28,10 +28,11 @@ FIREBASE_API_KEY = "AIzaSyDN4z8nc3gUAMSuGwEak9hV_JYK-9DsuI0"
 # A Sandbox purchase is free. A production deployment that honours one gives
 # the product away to anyone with a sandbox tester account. Set "Sandbox" only
 # on a staging deployment.
-# TEMPORARILY "Sandbox" FOR TESTING — MUST GO BACK TO "Production" BEFORE
-# RELEASE. A sandbox purchase costs nothing, so while this says Sandbox the
-# Worker will grant a real entitlement for a free transaction.
-ALLOWED_ENVIRONMENT = "Sandbox"
+# A sandbox purchase costs nothing, so a production deployment that honours
+# one gives the product away to anyone with a tester account. Set "Sandbox"
+# only while testing, and set it back the moment the test passes — which is
+# what happened here.
+ALLOWED_ENVIRONMENT = "Production"
 
 # Secrets, set with `wrangler secret put NAME` and never committed:
 #   APPLE_KEY_ID             the .p8 key's id (App Store Connect -> Integrations)
