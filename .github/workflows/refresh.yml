@@ -15,6 +15,11 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # The pipeline is a subdirectory of the monorepo. Without this, every step
+    # runs at the repo root, where there is no package.json at all.
+    defaults:
+      run:
+        working-directory: vane-pipeline
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
