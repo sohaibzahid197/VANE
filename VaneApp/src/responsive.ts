@@ -48,7 +48,14 @@ export type Scale = {
   isTablet: boolean;
   isSmall: boolean;
   landscape: boolean;
-  /** Tablets get a centred column rather than stretched-out rows. */
+  /**
+   * Tablets get a centred column rather than stretched-out rows.
+   *
+   * Dormant while the app ships iPhone-only and portrait-only — no iPhone is
+   * 600pt wide in portrait, so this is always undefined today. Kept rather
+   * than deleted because it costs nothing and is exactly what would be needed
+   * the day iPad support returns.
+   */
   maxWidth: number | undefined;
 };
 
