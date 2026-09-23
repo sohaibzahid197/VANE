@@ -11,6 +11,7 @@ import type { PlanId } from './products.ts';
 import React, {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
 } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Horizon } from './signals.ts';
 import { clearSignalsCache, setEntitled } from './useSignals.ts';
@@ -192,7 +193,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setEntitled(state.isPro);
   }, [state.isPro, hydrated]);
 
-  // Re-check entitlement against the server on every launch.
+  // Re-check entitlement against the server.
   //
   // The persisted isPro is only a cache for the first frame and for offline
   // launches. Without this the flag was write-once: nothing in the app ever
@@ -201,24 +202,44 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   //
   // A null answer means the network failed, not that the user lapsed — the
   // cached value survives, so a paying user on a bad connection keeps access.
+  // It is retried rather than abandoned: a single failed request at launch
+  // used to leave a freshly-paying user on the free tier until they
+  // relaunched, with nothing on screen to say why.
   useEffect(() => {
     if (!hydrated) return;
     let alive = true;
-    // Anything that grants Pro while this check is in flight wins. Without
-    // this, a first-run purchase completed during the launch fetch — a normal
-    // path, since onboarding leads straight to the paywall — was reverted to
-    // false by an answer that predated it, and the downgrade was persisted.
-    const startedAt = Date.now();
-    void (async () => {
+
+    const check = async () => {
+      // Anything that grants Pro while this is in flight wins. A first-run
+      // purchase completes during this fetch — onboarding leads straight to
+      // the paywall — and an answer that predates it must not revert it.
+      const startedAt = Date.now();
       const uid = await ensureSignedIn();
       if (!uid || !alive) return;
       const ent = await fetchEntitlement(uid);
-      if (!ent || !alive) return;
-      if (proGrantedAt.current > startedAt) return;
+      if (!ent || !alive) return false;
+      if (proGrantedAt.current > startedAt) return true;
       setState((prev) => (prev.isPro === ent.active ? prev : { ...prev, isPro: ent.active }));
+      return true;
+    };
+
+    void (async () => {
+      if ((await check()) === false && alive) {
+        // One backoff retry covers the common transient failure.
+        await new Promise<void>((r) => setTimeout(() => r(), 4000));
+        if (alive) await check();
+      }
     })();
+
+    // And again whenever the app comes back to the foreground, which is when
+    // a subscription bought, cancelled or refunded elsewhere shows up.
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void check();
+    });
+
     return () => {
       alive = false;
+      sub.remove();
     };
   }, [hydrated]);
 

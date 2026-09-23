@@ -39,7 +39,7 @@ import {
   transactionIdOf,
   type PlanOffer,
 } from '../purchases.ts';
-import { validatePurchase } from '../entitlement.ts';
+import { lastValidateFailure, validatePurchase } from '../entitlement.ts';
 
 /** Opening a URL can reject (no handler, malformed link). Unhandled, that is
  *  a silent no-op for the user and a LogBox warning for us. */
@@ -101,6 +101,40 @@ function money(amount: number, currency: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Format a derived amount the way the STOREFRONT would, not the device.
+ *
+ * Intl formats in the device locale, which is independent of the App Store
+ * storefront — an en-PK phone buying from a US storefront rendered "US$6.67"
+ * next to StoreKit's own "$79.99", two conventions for one currency, three
+ * characters apart. `currencyDisplay: 'narrowSymbol'` would paper over this
+ * case and break others: it needs ICU 62 (API 28) on Android while this app
+ * supports API 24, where it silently reverts to the wide symbol.
+ *
+ * StoreKit already handed us a correctly formatted example of this currency
+ * in this storefront's convention, so reuse its shape and substitute the
+ * number. That makes no locale decision at all.
+ *
+ * Known limitation: group separators are not reconstructed, so a derived
+ * amount crossing a thousand loses them on high-denomination currencies. The
+ * symbol and decimal mark — what a buyer actually compares — always match.
+ */
+function perMonthLike(amount: number, sample: string, currency: string): string | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  // The numeric run inside the sample: "79.99" in "$79.99", "1 234,56" in
+  // "1 234,56 €". Non-breaking spaces are group separators in some locales.
+  const m = sample.match(/\d[\d\s\u00A0\u202F.,]*\d|\d/);
+  if (!m) return money(amount, currency);
+  // Only ONE or TWO trailing digits after a separator are decimals. Three is
+  // a group separator: reading "¥12,000" as two integer digits and three
+  // decimals produced "¥1000.000", which is not a price in any currency.
+  // Zero-decimal currencies (JPY, KRW) fall out of this correctly.
+  const decimals = /[.,](\d{1,2})$/.exec(m[0])?.[1].length ?? 0;
+  const commaDecimal = /,\d{1,2}$/.test(m[0]);
+  const fixed = amount.toFixed(decimals);
+  return sample.replace(m[0], commaDecimal ? fixed.replace('.', ',') : fixed);
 }
 
 /**
@@ -230,7 +264,12 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
         Alert.alert(
           'Almost there',
           "Your purchase went through, but we couldn't confirm it just yet. " +
-            'Reopen the app when you have a connection and it will finish automatically.',
+            'Reopen the app when you have a connection and it will finish ' +
+            'automatically.' +
+            // The reason, verbatim. Without it every failure — a rejected
+            // token, an unknown transaction, a throttle, a timeout — produced
+            // one identical message with nothing to act on.
+            (lastValidateFailure ? `\n\n(${lastValidateFailure})` : ''),
         );
         return;
       }
@@ -337,15 +376,20 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
         style={st.body}
         contentContainerStyle={st.bodyContent}
         showsVerticalScrollIndicator={false}>
-        <Text style={st.title} accessibilityRole="header">See why, not just what.</Text>
+        {/* Pitch and plans are two blocks, not five siblings, so the slack on
+            a tall device lands BETWEEN them (space-between) rather than being
+            split above and below everything. */}
+        <View>
+          <Text style={st.title} accessibilityRole="header">See why, not just what.</Text>
 
-        <View style={st.perks}>
-          {PERKS.map((p) => (
-            <View key={p} style={st.perkRow}>
-              <IconTick size={s.w(16)} color={C.accent} />
-              <Text style={st.perkText}>{p}</Text>
-            </View>
-          ))}
+          <View style={st.perks}>
+            {PERKS.map((p) => (
+              <View key={p} style={st.perkRow}>
+                <IconTick size={s.w(16)} color={C.accent} />
+                <Text style={st.perkText}>{p}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
         {/* Loading and ErrorState carry the progressbar role and the polite
@@ -376,7 +420,7 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
               const perMonth =
                 o.plan === 'monthly' || !hasAmount(o)
                   ? null
-                  : money(monthlyRate(o), o.currency);
+                  : perMonthLike(monthlyRate(o), o.price, o.currency);
               const against = save !== null ? baselinePlan(sorted) : null;
               return (
                 <Pressable
@@ -493,7 +537,16 @@ function useStyles() {
   },
 
   body: { flex: 1 },
-  bodyContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: h(10) },
+  // `justifyContent: 'center'` put HALF the slack above the pitch, and since
+  // the footer is pinned outside this ScrollView the lower half had nothing to
+  // balance it — so on a tall device it read as a dead band under the header.
+  // 'space-between' keeps the pitch pinned under the header and pushes the
+  // plan cards down onto the footer; when the content overflows (iPhone SE)
+  // there is no slack to distribute and it degrades to a normal scroll.
+  bodyContent: {
+    flexGrow: 1, justifyContent: 'space-between',
+    paddingTop: h(16), paddingBottom: h(12),
+  },
   title: {
     color: C.text, fontSize: f(29), fontWeight: '700',
     lineHeight: f(35), marginBottom: h(20),

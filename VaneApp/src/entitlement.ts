@@ -51,12 +51,16 @@ export async function fetchEntitlement(uid: string): Promise<Entitlement | null>
   try {
     const token = await idToken();
     if (!token) return null;
+    // Attestation before the timer, for the same reason as in
+    // validatePurchase: inside it, App Attest spends the request's budget.
+    const attest = await appCheckHeader();
+
     const t = withTimeout();
     let res: Response;
     try {
       res = await fetch(DOC(uid), {
         signal: t.signal,
-        headers: { ...(await appCheckHeader()), Authorization: `Bearer ${token}` },
+        headers: { ...attest, Authorization: `Bearer ${token}` },
       });
     } finally {
       t.done();
@@ -90,33 +94,76 @@ export async function fetchEntitlement(uid: string): Promise<Entitlement | null>
  * treat that as a grant — but it must also not finish the StoreKit
  * transaction, so the purchase stays in the queue and can be replayed.
  */
+/**
+ * Why the last validation failed, in plain words.
+ *
+ * Every failure used to collapse to null, so a rejected token, an unknown
+ * transaction, a throttle and a timeout produced one identical alert with
+ * nothing to act on — on a device, with no cable attached.
+ */
+export let lastValidateFailure = '';
+
 export async function validatePurchase(transactionId: string): Promise<Entitlement | null> {
+  const note = (why: string, extra?: unknown) => {
+    lastValidateFailure = why;
+    console.warn('[vane][validate]', why, extra ?? '');
+  };
+
   try {
+    if (!transactionId) {
+      note('no transaction id');
+      return null;
+    }
+
     const token = await idToken();
-    if (!token) return null;
+    if (!token) {
+      note('not signed in');
+      return null;
+    }
+
+    // Attestation is fetched BEFORE the timer starts. Awaiting it inside the
+    // fetch call put it inside the abort budget: App Attest's first assertion
+    // on a real device can take seconds, and when it overran, fetch was called
+    // with an already-aborted signal — the request never left the phone and
+    // the failure looked like a network timeout.
+    const startedAt = Date.now();
+    const attest = await appCheckHeader();
+
     const t = withTimeout();
     let res: Response;
     try {
       res = await fetch(VALIDATE_URL, {
-      signal: t.signal,
-      method: 'POST',
-      headers: {
-        ...(await appCheckHeader()),
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ transactionId }),
+        signal: t.signal,
+        method: 'POST',
+        headers: {
+          ...attest,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transactionId }),
       });
     } finally {
       t.done();
     }
-    if (!res.ok) return null;
+
+    if (!res.ok) {
+      // The Worker's own error strings are the diagnosis: 401 invalid token,
+      // 404 unknown transaction, 403 wrong environment, 409 linked to another
+      // account, 429 throttled, 500 the Apple lookup threw.
+      const detail = await res.text().catch(() => '');
+      note(`server said ${res.status}`, `${detail.slice(0, 200)} (${Date.now() - startedAt}ms)`);
+      return null;
+    }
+
     const body = (await res.json()) as { active?: boolean; expiresAt?: string };
+    lastValidateFailure = '';
     return {
       active: body.active === true,
       expiresAt: Date.parse(body.expiresAt ?? '') || 0,
     };
-  } catch {
+  } catch (e) {
+    const aborted = (e as Error)?.name === 'AbortError';
+    note(aborted ? `timed out after ${TIMEOUT_MS}ms` : 'request failed', String((e as Error)?.message ?? e));
     return null;
   }
 }

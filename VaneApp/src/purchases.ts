@@ -18,6 +18,7 @@ import {
   fetchProducts,
   finishTransaction,
   getAvailablePurchases,
+  getPendingTransactionsIOS,
   initConnection,
   purchaseErrorListener,
   purchaseUpdatedListener,
@@ -145,23 +146,36 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
 
   return new Promise<PurchaseOutcome>((resolve) => {
     let settled = false;
-    const done = (r: PurchaseOutcome) => {
+    let grace: ReturnType<typeof setTimeout> | undefined;
+
+    const settle = (r: PurchaseOutcome) => {
       if (settled) return;
       settled = true;
+      purchaseInFlight = false;
+      if (grace) clearTimeout(grace);
       offUpdate?.remove?.();
       offError?.remove?.();
       resolve(r);
     };
 
-    const offUpdate = purchaseUpdatedListener((purchase: any) => {
-      // `productId` is the SKU. `id` is the TRANSACTION id and is always
-      // present, so reading `id` first meant this comparison was always true
-      // and every purchase event was discarded — the promise would hang
-      // forever after a successful payment.
-      const productId = purchase?.productId;
-      if (productId !== sku) return;
-      settle({ status: 'purchased', transaction: purchase });
-    });
+    // dedupeTransactionIOS: false is the whole reason this works.
+    //
+    // The native layer records each transaction id as "delivered" once per
+    // connection, across every JS listener. A transaction replayed at launch
+    // — which is exactly what an unfinished purchase is — burns that record,
+    // so a later requestPurchase for the same SKU emits NOTHING to a deduping
+    // listener: no purchase event, no error, no throw. The promise then never
+    // settled and the Subscribe button read "Please wait…" forever.
+    const offUpdate = purchaseUpdatedListener(
+      (purchase: any) => {
+        // `productId` is the SKU. `id` is the TRANSACTION id and is always
+        // present, so reading `id` first meant this comparison was always true
+        // and every purchase event was discarded.
+        if (purchase?.productId !== sku) return;
+        settle({ status: 'purchased', transaction: purchase });
+      },
+      { dedupeTransactionIOS: false } as any,
+    );
 
     const offError = purchaseErrorListener((err: any) => {
       const code = String(err?.code ?? '');
@@ -170,16 +184,26 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
     });
 
     purchaseInFlight = true;
-    const settle = (r: PurchaseOutcome) => {
-      purchaseInFlight = false;
-      done(r);
-    };
 
     void (async () => {
       if (!(await connect())) {
         settle({ status: 'failed', reason: 'Store unavailable.' });
         return;
       }
+
+      // Already paid, just not confirmed? Then do not buy again.
+      //
+      // A purchase whose server validation failed is left unfinished on
+      // purpose so it can be retried. Tapping Subscribe again should resume
+      // THAT transaction rather than start a second one — the user has
+      // already been charged, and in production a second purchase is a second
+      // charge.
+      const pending = await pendingFor(sku);
+      if (pending) {
+        settle({ status: 'purchased', transaction: pending });
+        return;
+      }
+
       // The platform keys are `apple` and `google`. They are NOT `ios` and
       // `android`: react-native-iap reads `request.apple.sku` directly and
       // throws EmptySkuList when it is missing, so the wrong key made every
@@ -189,13 +213,77 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
         request: { apple: { sku }, google: { skus: [sku] } },
         type: 'subs',
       });
-    })()
-      .catch((e: any) => {
-        const code = String(e?.code ?? '');
-        if (/cancel/i.test(code)) return settle({ status: 'cancelled' });
-        settle({ status: 'failed', reason: e?.message ?? 'Purchase failed.' });
-      });
+
+      // requestPurchase has returned, so the sheet is closed and the user has
+      // finished interacting. Anything still outstanding is a delivery that is
+      // not coming. Ask the store directly rather than waiting forever.
+      //
+      // The timer starts HERE, not at the top: the sheet can legitimately sit
+      // open for minutes behind Face ID, a password, or an Ask to Buy
+      // approval, and a blanket timeout would cancel real purchases.
+      grace = setTimeout(() => {
+        void (async () => {
+          const found = await pendingFor(sku);
+          if (found) settle({ status: 'purchased', transaction: found });
+          else settle({ status: 'failed', reason: 'The store did not confirm the purchase.' });
+        })();
+      }, 6000);
+    })().catch((e: any) => {
+      const code = String(e?.code ?? '');
+      if (/cancel/i.test(code)) return settle({ status: 'cancelled' });
+      settle({ status: 'failed', reason: e?.message ?? 'Purchase failed.' });
+    });
   });
+}
+
+/**
+ * Every unfinished transaction, pulled rather than waited for.
+ *
+ * The library does not replay unfinished transactions to JS on connect — it
+ * caches them natively and emits nothing. The only path to a listener is
+ * Transaction.updates, which redelivers an interrupted purchase on a cold
+ * launch *often* but not reliably, and never twice in one process. A
+ * transaction it declines to re-yield was invisible to the app forever.
+ *
+ * This asks the store directly, so recovery no longer depends on an event
+ * that may not arrive.
+ */
+export async function pendingTransactions(): Promise<unknown[]> {
+  if (!(await connect())) return [];
+  try {
+    const list = (await getPendingTransactionsIOS()) as unknown[];
+    return list ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Transactions already being handled, so the pull and the event stream cannot
+ * both process one purchase — that would validate and finish it twice.
+ *
+ * An id is removed when validation FAILS, so the next attempt retries it.
+ */
+const handling = new Set<string>();
+
+export function claimTransaction(id: string): boolean {
+  if (!id || handling.has(id)) return false;
+  handling.add(id);
+  return true;
+}
+
+export function releaseTransaction(id: string): void {
+  handling.delete(id);
+}
+
+/** An unfinished purchase of this SKU sitting in the store's queue, if any. */
+async function pendingFor(sku: string): Promise<unknown | null> {
+  try {
+    const purchases = (await getAvailablePurchases()) as any[];
+    return (purchases ?? []).find((p) => String(p?.productId) === sku) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -4,11 +4,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StoreProvider } from './src/store.tsx';
 import { ErrorBoundary } from './src/ErrorBoundary.tsx';
 import Navigation from './src/Navigation.tsx';
+import PurchaseRecovery from './src/PurchaseRecovery.tsx';
 import { ensureChannel, registerForPush, syncAlerts } from './src/notifications.ts';
 import { ensureSignedIn } from './src/firebase.ts';
 import { initAppCheck } from './src/appCheck.ts';
-import { complete, connect, loadOffers, onPurchaseRecovered, transactionIdOf } from './src/purchases.ts';
-import { validatePurchase } from './src/entitlement.ts';
+import { connect, loadOffers } from './src/purchases.ts';
 import { hasPermission } from './src/notifications.ts';
 import { loadAlertsAsync } from './src/store.tsx';
 
@@ -49,28 +49,10 @@ export default function App() {
       if (await hasPermission()) await syncAlerts(await loadAlertsAsync());
     })().catch(() => {});
 
-    // Recover transactions that arrive with no paywall on screen.
-    //
-    // StoreKit replays an unfinished transaction on every launch, and an
-    // "Ask to Buy" purchase is approved long after the sheet has gone. Until
-    // now nothing was listening for either: the user was charged, the
-    // transaction was never finished, and it was re-queued forever.
-    // The StoreKit listener that replays unfinished transactions is started by
-    // initConnection, NOT by registering a JS callback. Without this the
-    // recovery below was inert in release builds — loadOffers is the only
-    // other caller and it runs under __DEV__ — so an "Ask to Buy" approval or
-    // a validator outage was never recovered until the user happened to open
-    // the paywall.
+    // StoreKit's replay listener is started by the connection, not by
+    // registering a callback, so this must run even though the recovery
+    // handler itself now lives in PurchaseRecovery inside StoreProvider.
     connect().catch(() => {});
-
-    const offPurchase = onPurchaseRecovered(async (transaction) => {
-      const txId = transactionIdOf(transaction);
-      if (!txId) return;
-      const verdict = await validatePurchase(txId);
-      // Only finish once the server has recorded entitlement. A failure here
-      // leaves the transaction queued so the next launch tries again.
-      if (verdict?.active) await complete(transaction);
-    });
 
     let off: (() => void) | undefined;
     // Anonymous sign-in first: the FCM token is stored against the uid, so
@@ -82,10 +64,7 @@ export default function App() {
       })
       .catch(() => {});
 
-    return () => {
-      off?.();
-      offPurchase();
-    };
+    return () => off?.();
   }, []);
 
   return (
@@ -93,6 +72,7 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" />
         <StoreProvider>
+          <PurchaseRecovery />
           <Navigation />
         </StoreProvider>
       </SafeAreaProvider>
