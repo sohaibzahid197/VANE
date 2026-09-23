@@ -11,7 +11,13 @@
 // refunded subscriber loses access without anything having to run on
 // their phone.
 
-import { type AppleConfig, entitlementFrom, getTransaction } from './apple.ts';
+import {
+  type AppleConfig,
+  type Environment,
+  entitlementFrom,
+  getSubscriptionStatus,
+  getTransaction,
+} from './apple.ts';
 import { decodeJws, verifyJwsSignature } from './jwt.ts';
 import {
   linkTransaction,
@@ -35,6 +41,14 @@ export type Env = {
   APPLE_KEY_ID: string;
   APPLE_ISSUER_ID: string;
   APPLE_PRIVATE_KEY: string;
+  /**
+   * Which store environment this deployment honours.
+   *
+   * A Sandbox purchase costs nothing, so a production Worker that accepts
+   * Sandbox transactions gives away the product to anyone with a sandbox
+   * tester account. Set to 'Sandbox' only on a staging deployment.
+   */
+  ALLOWED_ENVIRONMENT: Environment;
 };
 
 const json = (body: unknown, status = 200) =>
@@ -95,19 +109,38 @@ async function validate(request: Request, env: Env): Promise<Response> {
   const tx = await getTransaction(apple, transactionId);
   if (!tx) return json({ error: 'unknown transaction' }, 404);
 
-  const verdict = entitlementFrom(tx, PRODUCT_IDS, env.BUNDLE_ID);
+  // A Sandbox purchase is free. Accepting one in production hands the product
+  // to anyone with a sandbox tester account — and, via the link below, to
+  // however many accounts they care to validate it against.
+  if (tx.environment !== (env.ALLOWED_ENVIRONMENT ?? 'Production')) {
+    return json({ error: 'wrong environment' }, 403);
+  }
 
-  // Record the owner even when the verdict is negative: a subscription that
-  // has lapsed can be renewed later, and the webhook that tells us so carries
-  // only the transaction, never the user.
-  await linkTransaction(db, tx.originalTransactionId, uid);
+  // The transaction to user link is WRITE-ONCE.
+  //
+  // Nothing proves the caller owns this transaction — Apple's response is
+  // identical whoever asks. Without this check, one real purchase entitles
+  // unlimited accounts: each attacker posts the same transaction id under
+  // their own token and Apple confirms it is genuine and active every time.
+  // It also hijacked the webhook route, because the last writer owned the
+  // link, so the real buyer's renewals and refunds landed on the attacker.
+  const owner = await uidForTransaction(db, tx.originalTransactionId);
+  if (owner && owner !== uid) {
+    return json({ error: 'transaction belongs to another account' }, 409);
+  }
+  if (!owner) await linkTransaction(db, tx.originalTransactionId, uid);
+
+  const verdict = entitlementFrom(tx, PRODUCT_IDS, env.BUNDLE_ID);
   await writeEntitlement(db, uid, {
     active: verdict.active,
     productId: tx.productId,
     expiresAt: verdict.expiresAt,
     originalTransactionId: tx.originalTransactionId,
     environment: tx.environment,
-    updatedAt: new Date(),
+    // Apple's clock, not ours. Stamping local wall-clock here made a
+    // legitimate REFUND webhook — signed seconds earlier — look stale and get
+    // dropped, so a refunded user kept access for the rest of the term.
+    updatedAt: new Date(tx.purchaseDate),
   });
 
   return json({ active: verdict.active, expiresAt: verdict.expiresAt.toISOString() });
@@ -124,44 +157,82 @@ type NotificationPayload = {
 /**
  * App Store Server Notifications V2.
  *
- * This endpoint is public — Apple cannot present a bearer token — so the JWS
- * signature IS the authentication. An unverified webhook would let anyone
- * grant themselves a subscription by POSTing a JSON body.
+ * THE PAYLOAD IS NOT TRUSTED. It is a hint, nothing more.
+ *
+ * This endpoint is public — Apple cannot present a bearer token — so the
+ * obvious design is to authenticate the request by verifying the JWS. That is
+ * what this used to do, and it was worthless: the signature was checked
+ * against the certificate carried in the token's own x5c header, with no
+ * chain to Apple's root. Anyone could self-sign a certificate, sign a payload
+ * with it, and have it accepted. A single unauthenticated POST could set any
+ * linked account's expiry to the year 2100 — and because the forged
+ * signedDate then beat every real event, Apple's own REFUND and EXPIRED
+ * notifications would be dropped as stale forever after.
+ *
+ * Verifying the chain properly would fix that, and it is still worth doing.
+ * But it is not what this code relies on. Instead the notification is used
+ * only to learn WHICH subscription changed; the actual state is then fetched
+ * from Apple over TLS, authenticated with our own private key. A forged
+ * notification now buys an attacker nothing: the worst it can do is make us
+ * re-read the true state of a subscription.
  */
 async function notify(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => null)) as { signedPayload?: string } | null;
   const signed = body?.signedPayload;
   if (!signed) return json({ error: 'missing signedPayload' }, 400);
 
-  if (!(await verifyJwsSignature(signed))) {
-    return json({ error: 'signature verification failed' }, 401);
+  // Cheap pre-filter, not authorization. A malformed token is rejected here so
+  // it never costs us an Apple API call; a well-formed forgery gets through
+  // this check by design and is defeated by the authoritative fetch below.
+  let payload: NotificationPayload;
+  try {
+    payload = decodeJws<NotificationPayload>(signed).payload;
+  } catch {
+    return json({ error: 'malformed payload' }, 400);
   }
 
-  const payload = decodeJws<NotificationPayload>(signed).payload;
-  const signedTx = payload.data?.signedTransactionInfo;
-  if (!signedTx) return json({ ok: true, ignored: payload.notificationType });
-  if (!(await verifyJwsSignature(signedTx))) {
-    return json({ error: 'transaction signature failed' }, 401);
+  const hinted = payload.data?.signedTransactionInfo;
+  if (!hinted) return json({ ok: true, ignored: payload.notificationType });
+
+  let originalTransactionId: string;
+  try {
+    originalTransactionId = decodeJws<{ originalTransactionId: string }>(hinted).payload
+      .originalTransactionId;
+  } catch {
+    return json({ error: 'malformed transaction' }, 400);
   }
+  if (!originalTransactionId) return json({ error: 'missing transaction id' }, 400);
 
-  const tx = decodeJws<import('./apple.ts').TransactionInfo>(signedTx).payload;
-  const { db } = config(env);
+  const { apple, db } = config(env);
 
-  const uid = await uidForTransaction(db, tx.originalTransactionId);
+  // An unknown subscription cannot be acted on, and no retry will change that
+  // — the link is created by /validate. A non-2xx would make Apple retry for
+  // hours over something only the app can fix.
+  const uid = await uidForTransaction(db, originalTransactionId);
   if (!uid) {
-    // A renewal for a subscription we never saw validated. Acknowledge it —
-    // returning non-2xx makes Apple retry for hours over something no retry
-    // can fix — and rely on the app calling /validate when it next launches.
-    console.warn('no uid for transaction', tx.originalTransactionId, payload.notificationType);
+    console.warn('unlinked subscription', originalTransactionId, payload.notificationType);
     return json({ ok: true, unlinked: true });
   }
 
-  // Apple retries, and retries can arrive out of order. Applying an older
-  // event over a newer one would resurrect a subscription that has since been
-  // refunded, so anything not strictly newer is dropped.
+  // THE AUTHORITATIVE READ. Everything above this line is attacker-controlled.
+  const tx = await getSubscriptionStatus(apple, originalTransactionId);
+  if (!tx) return json({ ok: true, unknown: true });
+
+  if (tx.environment !== (env.ALLOWED_ENVIRONMENT ?? 'Production')) {
+    return json({ ok: true, ignoredEnvironment: tx.environment });
+  }
+
+  // Ordering is on Apple's clock for both writers, so a webhook can no longer
+  // be discarded merely because /validate ran a moment later on ours. The
+  // comparison is scoped to this subscription: a user may hold more than one,
+  // and one subscription's events must not gate another's.
   const current = await readEntitlement(db, uid);
-  const eventAt = new Date(payload.signedDate);
-  if (current && current.updatedAt >= eventAt) {
+  const eventAt = new Date(tx.purchaseDate);
+  if (
+    current &&
+    current.originalTransactionId === originalTransactionId &&
+    current.updatedAt > eventAt
+  ) {
     return json({ ok: true, stale: true });
   }
 

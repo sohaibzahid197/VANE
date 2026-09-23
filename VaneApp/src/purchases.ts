@@ -38,6 +38,29 @@ export type PlanOffer = {
 
 let connected: Promise<boolean> | null = null;
 
+/**
+ * True while buy() owns the outcome.
+ *
+ * Both this module's per-purchase listener and the app-level recovery
+ * listener receive the same native event, so without this every live purchase
+ * was validated twice and finished twice, racing each other.
+ */
+let purchaseInFlight = false;
+
+/**
+ * The transaction identifier Apple's API expects.
+ *
+ * On iOS `id` and `transactionId` are both StoreKit's Transaction.id. On
+ * Android they are NOT interchangeable: react-native-iap sets `id` to the
+ * purchaseToken when Play has no orderId, and deliberately leaves
+ * `transactionId` null in that case. Reading `id` first therefore sends a
+ * purchase token where a transaction id belongs.
+ */
+export function transactionIdOf(purchase: unknown): string {
+  const p = purchase as any;
+  return String(p?.transactionId ?? p?.id ?? '');
+}
+
 /** Open the StoreKit connection once. */
 export function connect(): Promise<boolean> {
   if (connected) return connected;
@@ -137,18 +160,24 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
       // forever after a successful payment.
       const productId = purchase?.productId;
       if (productId !== sku) return;
-      done({ status: 'purchased', transaction: purchase });
+      settle({ status: 'purchased', transaction: purchase });
     });
 
     const offError = purchaseErrorListener((err: any) => {
       const code = String(err?.code ?? '');
-      if (/cancel/i.test(code)) return done({ status: 'cancelled' });
-      done({ status: 'failed', reason: err?.message ?? 'Purchase failed.' });
+      if (/cancel/i.test(code)) return settle({ status: 'cancelled' });
+      settle({ status: 'failed', reason: err?.message ?? 'Purchase failed.' });
     });
+
+    purchaseInFlight = true;
+    const settle = (r: PurchaseOutcome) => {
+      purchaseInFlight = false;
+      done(r);
+    };
 
     void (async () => {
       if (!(await connect())) {
-        done({ status: 'failed', reason: 'Store unavailable.' });
+        settle({ status: 'failed', reason: 'Store unavailable.' });
         return;
       }
       // The platform keys are `apple` and `google`. They are NOT `ios` and
@@ -163,8 +192,8 @@ export function buy(plan: PlanId): Promise<PurchaseOutcome> {
     })()
       .catch((e: any) => {
         const code = String(e?.code ?? '');
-        if (/cancel/i.test(code)) return done({ status: 'cancelled' });
-        done({ status: 'failed', reason: e?.message ?? 'Purchase failed.' });
+        if (/cancel/i.test(code)) return settle({ status: 'cancelled' });
+        settle({ status: 'failed', reason: e?.message ?? 'Purchase failed.' });
       });
   });
 }
@@ -221,6 +250,11 @@ export function onPurchaseRecovered(
   handler: (transaction: unknown, productId: string) => void | Promise<void>,
 ): () => void {
   const sub = purchaseUpdatedListener((purchase: any) => {
+    // A live buy() owns its own outcome. Without this, both listeners saw the
+    // same event: the purchase was validated twice concurrently and finished
+    // twice, and the app-level path could finish the transaction while the
+    // paywall was still telling the user it could not confirm it.
+    if (purchaseInFlight) return;
     const productId = String(purchase?.productId ?? '');
     // Only our own subscriptions, so an unrelated purchase in the same Apple
     // Account cannot drive entitlement.

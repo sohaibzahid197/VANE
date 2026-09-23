@@ -13,7 +13,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Horizon } from './signals.ts';
-import { setEntitled } from './useSignals.ts';
+import { clearSignalsCache, setEntitled } from './useSignals.ts';
 import { fetchEntitlement } from './entitlement.ts';
 import {
   type Prediction, type WriteResult,
@@ -204,11 +204,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     let alive = true;
+    // Anything that grants Pro while this check is in flight wins. Without
+    // this, a first-run purchase completed during the launch fetch — a normal
+    // path, since onboarding leads straight to the paywall — was reverted to
+    // false by an answer that predated it, and the downgrade was persisted.
+    const startedAt = Date.now();
     void (async () => {
       const uid = await ensureSignedIn();
       if (!uid || !alive) return;
       const ent = await fetchEntitlement(uid);
       if (!ent || !alive) return;
+      if (proGrantedAt.current > startedAt) return;
       setState((prev) => (prev.isPro === ent.active ? prev : { ...prev, isPro: ent.active }));
     })();
     return () => {
@@ -219,6 +225,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // Monotonic token: only the newest in-flight fetch may write state, so two
   // rapid calls cannot land out of order and resurrect a stale list.
   const fetchSeq = useRef(0);
+
+  /** When Pro was last granted locally, to order it against launch checks. */
+  const proGrantedAt = useRef(0);
 
   const refreshPredictions = useCallback(() => {
     const seq = ++fetchSeq.current;
@@ -310,7 +319,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       voided,
 
       finishOnboarding: () => patch({ onboarded: true }),
-      setPro: (v) => patch({ isPro: v }),
+      setPro: (v) => {
+        // Timestamped so an older in-flight entitlement check cannot undo it.
+        if (v) proGrantedAt.current = Date.now();
+        patch({ isPro: v });
+      },
       setPlan: (p) => patch({ plan: p }),
       setTf: (t) => patch({ tf: t }),
       setCurrency: (c) => patch({ currency: c }),
@@ -342,6 +355,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const res = await deleteAccountRemote();
         if (res.ok) {
           setState({ ...DEFAULTS, alerts: [...DEFAULT_ALERTS] });
+          // The signals cache is per-device, not per-account: without this the
+          // next person to sign in on this phone sees the previous user's
+          // snapshot, paid coins included.
+          void clearSignalsCache();
           setPredictions([]);
         }
         return res.ok ? { ok: true } : { ok: false, reason: res.reason };

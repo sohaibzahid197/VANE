@@ -488,7 +488,11 @@ export async function deleteAccount(): Promise<WriteResult> {
   const base = `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
 
   try {
-    for (const sub of ['predictions', 'votes'] as const) {
+    // Firestore does not delete subcollections when a parent document goes,
+    // so every one has to be named here. `entitlement` was missing, which
+    // left an orphaned record of a subscription behind after the user asked
+    // for their data to be erased.
+    for (const sub of ['predictions', 'votes', 'entitlement'] as const) {
       // Page through rather than assuming everything fits one response.
       for (let page = 0; page < 20; page++) {
         const rows = await post(

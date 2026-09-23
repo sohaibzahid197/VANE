@@ -113,7 +113,9 @@ export default function Settings({
         ) : (
           <>
             <Text style={st.subPlan}>Free</Text>
-            <Text style={st.subRenew}>1 signal per day · upgrade for all coins</Text>
+            {/* There is no daily quota and there never was — no counter exists
+                anywhere in the app. The free tier is BTC, always. */}
+            <Text style={st.subRenew}>Bitcoin only · upgrade for all coins</Text>
             <Pressable
               onPress={onPaywall}
               accessibilityRole="button"

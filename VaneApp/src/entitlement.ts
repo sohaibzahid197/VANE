@@ -13,8 +13,26 @@ import { appCheckHeader } from './appCheck.ts';
 import { idToken } from './firebase.ts';
 import { FIREBASE_PROJECT_ID } from './firebaseConfig.ts';
 
-/** Where the receipt validator lives. */
-export const VALIDATE_URL = 'https://vane-entitlement.workers.dev/validate';
+/**
+ * Where the receipt validator lives.
+ *
+ * MUST BE REPLACED WITH THE REAL URL BEFORE SHIPPING. A workers.dev hostname
+ * includes the account subdomain — `https://vane-entitlement.<subdomain>
+ * .workers.dev` — and `wrangler deploy` prints the exact value. The host
+ * below is a placeholder that does not resolve, and while it stands every
+ * purchase and every restore fails silently: validatePurchase catches the
+ * network error and returns null, so the user is charged and never entitled.
+ */
+export const VALIDATE_URL = 'https://vane-entitlement.REPLACE-ME.workers.dev/validate';
+
+/** A stalled request must not hang the paywall; RN's fetch has no timeout. */
+const TIMEOUT_MS = 12_000;
+
+function withTimeout(): { signal: AbortSignal; done: () => void } {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  return { signal: ctl.signal, done: () => clearTimeout(timer) };
+}
 
 const DOC = (uid: string) =>
   `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}` +
@@ -35,9 +53,20 @@ export async function fetchEntitlement(uid: string): Promise<Entitlement | null>
   try {
     const token = await idToken();
     if (!token) return null;
-    const res = await fetch(DOC(uid), {
-      headers: { ...(await appCheckHeader()), Authorization: `Bearer ${token}` },
-    });
+    const t = withTimeout();
+    let res: Response;
+    try {
+      res = await fetch(DOC(uid), {
+        signal: t.signal,
+        headers: { ...(await appCheckHeader()), Authorization: `Bearer ${token}` },
+      });
+    } finally {
+      t.done();
+    }
+    // 404 is a real answer from an authenticated owner: the rules allow the
+    // read regardless of existence, so a missing document means never
+    // subscribed. Anything else — including a 403 from a failed App Check
+    // attestation — is "don't know", and the cached value stands.
     if (res.status === 404) return EXPIRED;
     if (!res.ok) return null;
 
@@ -67,7 +96,11 @@ export async function validatePurchase(transactionId: string): Promise<Entitleme
   try {
     const token = await idToken();
     if (!token) return null;
-    const res = await fetch(VALIDATE_URL, {
+    const t = withTimeout();
+    let res: Response;
+    try {
+      res = await fetch(VALIDATE_URL, {
+      signal: t.signal,
       method: 'POST',
       headers: {
         ...(await appCheckHeader()),
@@ -75,7 +108,10 @@ export async function validatePurchase(transactionId: string): Promise<Entitleme
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ transactionId }),
-    });
+      });
+    } finally {
+      t.done();
+    }
     if (!res.ok) return null;
     const body = (await res.json()) as { active?: boolean; expiresAt?: string };
     return {

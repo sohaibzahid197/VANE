@@ -62,8 +62,19 @@ export default function Alerts({
     if (granted) syncAlerts(alerts).catch(() => {});
   }, [alerts, granted]);
 
+  // Derived from the rows actually rendered, not from the full PRO_ALERT
+  // table. Indices 1, 2 and 4 are still flagged Pro there but no longer appear
+  // in ALERTS, so this was permanently true and rendered an "Unlock all alerts
+  // with Pro" button on a screen where nothing was locked — selling something
+  // that does not exist.
+  // Only the rows that are actually rendered. The digest is the single alert
+  // that exists, and it is free, so this is false. It was
+  // `PRO_ALERT.some(Boolean)` — permanently true, because indices 1, 2 and 4
+  // are still flagged Pro in that table while no longer appearing in ALERTS —
+  // which rendered an "Unlock all alerts with Pro" button on a screen where
+  // nothing was locked.
   const anyLocked = useMemo(
-    () => MONETIZATION && !isPro && PRO_ALERT.some(Boolean),
+    () => ALERTS.some((_, i) => isAlertLocked(PRO_ALERT[DIGEST_INDEX + i] ?? false, isPro)),
     [isPro],
   );
 

@@ -31,7 +31,14 @@ import { Button, ErrorState, Loading, MIN_TAP, Text, tapSlop } from '../ui.tsx';
 import { useStore } from '../store.tsx';
 import { IconClose, IconTick } from '../icons.tsx';
 import { PLAN_LABEL, PLAN_ORDER, type PlanId } from '../products.ts';
-import { buy, complete, loadOffers, restore, type PlanOffer } from '../purchases.ts';
+import {
+  buy,
+  complete,
+  loadOffers,
+  restore,
+  transactionIdOf,
+  type PlanOffer,
+} from '../purchases.ts';
 import { validatePurchase } from '../entitlement.ts';
 
 /** Opening a URL can reject (no handler, malformed link). Unhandled, that is
@@ -45,11 +52,14 @@ function openExternal(url: string) {
 const TERMS = 'https://sohaibzahid197.github.io/VANE-legal/terms-and-conditions.html';
 const PRIVACY = 'https://sohaibzahid197.github.io/VANE-legal/privacy-policy.html';
 
+// Only things the app actually does. "Push alerts when a signal flips" was
+// listed here while Alerts.tsx says those rows "are gone until there is a
+// sender behind them" — selling a feature that cannot be delivered is a 3.1.2
+// misrepresentation, and a 2.1 finding if a reviewer subscribes.
 const PERKS = [
   'Every signal across all 30 coins',
   'Model reasoning for every call',
   '24h, 7d and 30d price targets',
-  'Push alerts when a signal flips',
   'Full history and accuracy stats',
 ];
 
@@ -197,11 +207,7 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
       // validator, which asks Apple what it really is and writes
       // users/{uid}/entitlement — the document the security rules consult
       // before serving the paid signals.
-      const txId = String(
-        (result.transaction as any)?.id ??
-          (result.transaction as any)?.transactionId ??
-          '',
-      );
+      const txId = transactionIdOf(result.transaction);
       const verdict = txId ? await validatePurchase(txId) : null;
 
       if (!verdict) {
@@ -217,8 +223,16 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
       }
 
       if (!verdict.active) {
-        Alert.alert('Purchase not active', 'The store reported this subscription as inactive.');
-        await complete(result.transaction);
+        // Deliberately NOT finished. `active: false` can be transient — Apple
+        // rate-limiting the lookup, or a subscription that has not propagated
+        // yet after an "Ask to Buy" approval or a billing retry. Finishing
+        // here would drop the only replayable copy of a purchase the user has
+        // already paid for, with no way back.
+        Alert.alert(
+          'Not active yet',
+          'The store has not confirmed this subscription yet. It will be applied ' +
+            'automatically once it does — no need to buy again.',
+        );
         return;
       }
 
@@ -249,11 +263,21 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
       // alone proves nothing: it can contain lapsed or refunded
       // subscriptions, and granting Pro for a non-empty array was a free
       // subscription for anyone who had ever cancelled.
+      // Bounded. A long-standing subscriber's history can be dozens of
+      // transactions, and one serial round trip each — with no timeout — left
+      // the whole screen disabled for minutes with no way to cancel. The
+      // newest purchases are the ones that can still be active.
+      const MAX_CHECKS = 8;
+      const recent = found.slice(-MAX_CHECKS).reverse();
+
       let active = false;
-      for (const p of found) {
-        const txId = String((p as any)?.id ?? (p as any)?.transactionId ?? '');
+      let reachedServer = false;
+      for (const p of recent) {
+        const txId = transactionIdOf(p);
         if (!txId) continue;
         const verdict = await validatePurchase(txId);
+        // null means we could not reach the validator; false is a real answer.
+        if (verdict) reachedServer = true;
         if (verdict?.active) {
           active = true;
           break;
@@ -261,9 +285,14 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
       }
 
       if (!active) {
+        // Telling a paying customer on a bad connection that they have no
+        // subscription is the worst answer available, and it drives refunds.
         Alert.alert(
-          'Nothing to restore',
-          'No active subscription was found for this Apple Account.',
+          reachedServer ? 'Nothing to restore' : "Couldn't check right now",
+          reachedServer
+            ? 'No active subscription was found for this Apple Account.'
+            : 'We could not reach the server to confirm your subscription. ' +
+              'Please try again in a moment.',
         );
         return;
       }

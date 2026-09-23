@@ -19,7 +19,29 @@ export type SignalsState = {
   reload: () => void;
 };
 
-const CACHE_KEY = 'vane.signals.v1';
+// Two caches, never one.
+//
+// A single key leaked the paid dataset straight past the server gate: the
+// last Pro session persisted all 30 coins, and the next launch rendered them
+// from disk for a user whose subscription had lapsed — indefinitely, if the
+// device was offline. It also showed one user's paid snapshot to the next
+// person to sign in on the same device.
+const CACHE_KEY_FREE = 'vane.signals.free.v1';
+const CACHE_KEY_PAID = 'vane.signals.paid.v1';
+const cacheKey = () => (entitled ? CACHE_KEY_PAID : CACHE_KEY_FREE);
+
+/** Every key this module has ever written, for a thorough clear. */
+const ALL_CACHE_KEYS = [CACHE_KEY_FREE, CACHE_KEY_PAID, 'vane.signals.v1'];
+
+/** Drop every cached snapshot. Called on sign-out and on losing entitlement. */
+export async function clearSignalsCache(): Promise<void> {
+  setStore({ data: null, stale: false, fetchedAt: 0 });
+  try {
+    await Promise.all(ALL_CACHE_KEYS.map((k) => AsyncStorage.removeItem(k)));
+  } catch {
+    // A cache we cannot clear is still never rendered: `data` is null above.
+  }
+}
 
 /** A fetch younger than this is reused rather than repeated. */
 const FRESH_MS = 60_000;
@@ -53,7 +75,12 @@ let entitled = false;
 
 export function setEntitled(next: boolean): void {
   if (entitled === next) return;
+  const lost = entitled && !next;
   entitled = next;
+  // Losing entitlement must drop the paid snapshot immediately, from memory
+  // and from disk. Re-fetching alone is not enough: the old 30 coins stay on
+  // screen until the network answers, and forever if it never does.
+  if (lost) void clearSignalsCache();
   // The cached snapshot belongs to the old entitlement. Re-fetch rather than
   // showing 30 coins to someone who just lapsed, or 1 to someone who just paid.
   void load(true).catch(() => {});
@@ -77,7 +104,7 @@ async function hydrate() {
   if (hydrated) return;
   hydrated = true;
   try {
-    const raw = await AsyncStorage.getItem(CACHE_KEY);
+    const raw = await AsyncStorage.getItem(cacheKey());
     if (!raw) return;
     const cached = JSON.parse(raw) as Snapshot;
     // Never overwrite a live payload that landed while we were reading disk.
@@ -89,7 +116,16 @@ async function hydrate() {
 
 async function load(force: boolean): Promise<void> {
   if (!force && Date.now() - store.fetchedAt < FRESH_MS && store.data) return;
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    // A forced load must not be satisfied by a fetch that is already running,
+    // because the thing that forced it — entitlement changing — is exactly
+    // what that fetch got wrong. On a Pro user's cold start the first load
+    // begins before AsyncStorage has hydrated, so it asks for the FREE
+    // document; returning it here left a paying subscriber looking at one
+    // coin until they manually pulled to refresh.
+    if (!force) return inFlight;
+    return inFlight.then(() => load(true));
+  }
 
   inFlight = (async () => {
     setStore({ loading: true, error: null });
@@ -105,7 +141,7 @@ async function load(force: boolean): Promise<void> {
       // An empty document is a pipeline failure, not an empty state.
       if (snap.coins.length === 0) throw new Error('No signals published yet');
       setStore({ data: snap, stale: false, error: null, fetchedAt: Date.now() });
-      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(snap)).catch(() => {});
+      AsyncStorage.setItem(cacheKey(), JSON.stringify(snap)).catch(() => {});
     } catch (e) {
       setStore({ error: (e as Error).message || 'Could not reach the signals service' });
       // No mock fallback: sample prices during a real outage look like live

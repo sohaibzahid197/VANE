@@ -7,7 +7,7 @@ import Navigation from './src/Navigation.tsx';
 import { ensureChannel, registerForPush, syncAlerts } from './src/notifications.ts';
 import { ensureSignedIn } from './src/firebase.ts';
 import { initAppCheck } from './src/appCheck.ts';
-import { complete, loadOffers, onPurchaseRecovered } from './src/purchases.ts';
+import { complete, connect, loadOffers, onPurchaseRecovered, transactionIdOf } from './src/purchases.ts';
 import { validatePurchase } from './src/entitlement.ts';
 import { hasPermission } from './src/notifications.ts';
 import { loadAlertsAsync } from './src/store.tsx';
@@ -55,10 +55,16 @@ export default function App() {
     // "Ask to Buy" purchase is approved long after the sheet has gone. Until
     // now nothing was listening for either: the user was charged, the
     // transaction was never finished, and it was re-queued forever.
+    // The StoreKit listener that replays unfinished transactions is started by
+    // initConnection, NOT by registering a JS callback. Without this the
+    // recovery below was inert in release builds — loadOffers is the only
+    // other caller and it runs under __DEV__ — so an "Ask to Buy" approval or
+    // a validator outage was never recovered until the user happened to open
+    // the paywall.
+    connect().catch(() => {});
+
     const offPurchase = onPurchaseRecovered(async (transaction) => {
-      const txId = String(
-        (transaction as any)?.id ?? (transaction as any)?.transactionId ?? '',
-      );
+      const txId = transactionIdOf(transaction);
       if (!txId) return;
       const verdict = await validatePurchase(txId);
       // Only finish once the server has recorded entitlement. A failure here

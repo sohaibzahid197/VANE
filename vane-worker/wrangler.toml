@@ -1,16 +1,22 @@
 name = "vane-entitlement"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
-# nodejs_compat is required for the Apple library's use of node:crypto shims.
-compatibility_flags = ["nodejs_compat"]
 
 [vars]
 BUNDLE_ID = "com.vane.app"
 FIREBASE_PROJECT_ID = "vane-crypto"
+# Not a secret: this key already ships inside every copy of the app. It only
+# identifies the project for the Identity Toolkit lookup that turns a caller's
+# ID token into a uid. Leaving it unset makes EVERY /validate call return 401,
+# which reads like an auth bug rather than the config bug it is.
+FIREBASE_API_KEY = "AIzaSyDN4z8nc3gUAMSuGwEak9hV_JYK-9DsuI0"
+# A Sandbox purchase is free. A production deployment that honours one gives
+# the product away to anyone with a sandbox tester account. Set "Sandbox" only
+# on a staging deployment.
+ALLOWED_ENVIRONMENT = "Production"
 
-# Secrets are set with `wrangler secret put NAME`, never committed:
-#   APPLE_KEY_ID          the .p8 key's id from App Store Connect
-#   APPLE_ISSUER_ID       the issuer id from Users and Access -> Integrations
-#   APPLE_PRIVATE_KEY     the .p8 file contents (PKCS#8 PEM)
-#   APPLE_APP_APPLE_ID    the numeric app id (6815321760)
-#   FIREBASE_SERVICE_ACCOUNT  the service account JSON
+# Secrets, set with `wrangler secret put NAME` and never committed:
+#   APPLE_KEY_ID             the .p8 key's id (App Store Connect -> Integrations)
+#   APPLE_ISSUER_ID          the issuer id on that same page
+#   APPLE_PRIVATE_KEY        the .p8 contents; pipe the file, do not paste
+#   FIREBASE_SERVICE_ACCOUNT the service account JSON, raw

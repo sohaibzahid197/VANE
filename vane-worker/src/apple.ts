@@ -52,6 +52,44 @@ async function bearer(cfg: AppleConfig): Promise<string> {
 }
 
 /**
+ * Ask Apple for the CURRENT state of a subscription.
+ *
+ * This is the authoritative call. It is made with our own private key over
+ * TLS to Apple's host, so nothing an attacker sends us can influence the
+ * answer — which is why the webhook handler uses this rather than believing
+ * the payload it was handed.
+ */
+export async function getSubscriptionStatus(
+  cfg: AppleConfig,
+  originalTransactionId: string,
+): Promise<TransactionInfo | null> {
+  for (const env of ['Production', 'Sandbox'] as Environment[]) {
+    const res = await fetch(
+      `${HOSTS[env]}/inApps/v1/subscriptions/${originalTransactionId}`,
+      { headers: { Authorization: `Bearer ${await bearer(cfg)}` } },
+    );
+    if (res.status === 404) continue;
+    if (!res.ok) throw new Error(`apple status ${env} ${res.status}: ${await res.text()}`);
+
+    const body = (await res.json()) as {
+      data?: Array<{ lastTransactions?: Array<{ signedTransactionInfo?: string }> }>;
+    };
+
+    // Newest transaction across every subscription group for this id.
+    let newest: TransactionInfo | null = null;
+    for (const group of body.data ?? []) {
+      for (const item of group.lastTransactions ?? []) {
+        if (!item.signedTransactionInfo) continue;
+        const tx = decodeJws<TransactionInfo>(item.signedTransactionInfo).payload;
+        if (!newest || tx.purchaseDate > newest.purchaseDate) newest = tx;
+      }
+    }
+    if (newest) return newest;
+  }
+  return null;
+}
+
+/**
  * Look up one transaction.
  *
  * Production is tried first and Sandbox second. This ordering is not cosmetic:

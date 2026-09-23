@@ -9,7 +9,7 @@ import { useScale } from '../responsive.ts';
 import { BackHeader, Body, Button, Card, Disclaimer, EmptyState, Label, MIN_TAP, Pill, Screen, Segmented, Text } from '../ui.tsx';
 import { HORIZONS, type Coin, type Horizon, seriesPath, toPath } from '../signals.ts';
 import { useStore } from '../store.tsx';
-import { MONETIZATION, isCoinLocked } from '../config.ts';
+import { isCoinLocked } from '../config.ts';
 import { castVote, fetchMyVote, type Direction } from '../firebase.ts';
 import { type Polls } from '../api.ts';
 import { IconDown, IconLock, IconUp } from '../icons.tsx';
@@ -249,7 +249,11 @@ export default function CoinDetail({
 
       <Card>
         <Label>WHY THE MODEL THINKS THIS</Label>
-        {!MONETIZATION || isPro ? (
+        {/* Gated on the COIN, not on the subscription. The server only sends a
+          free user coins they may see, so anything that arrived here is
+          theirs — gating on isPro put a padlock inside the one free coin and
+          threw away reasons the server had deliberately shipped. */}
+      {!locked ? (
           reasons.map((r) => (
             <View key={r} style={st.reasonRow}>
               <Text style={[st.bullet, { color: dir }]}>—</Text>
