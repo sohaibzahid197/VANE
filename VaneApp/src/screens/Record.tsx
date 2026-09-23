@@ -7,6 +7,7 @@ import { C, tint } from '../theme.ts';
 import { useScale } from '../responsive.ts';
 import { Card, Disclaimer, EmptyState, ErrorState, Label, Loading, Screen, Segmented, Text } from '../ui.tsx';
 import { accuracyOf, useStore } from '../store.tsx';
+import ModelRecord from '../ModelRecord.tsx';
 import { IconCheck, IconCross, IconEmpty, IconPending } from '../icons.tsx';
 
 const FILTERS = ['All', 'Wins', 'Losses'] as const;
@@ -30,6 +31,7 @@ export default function Record() {
     return (
       <Screen>
         <Text style={st.title} accessibilityRole="header">My record</Text>
+        <ModelRecord />
         <Loading label="Loading your calls" />
       </Screen>
     );
@@ -39,6 +41,7 @@ export default function Record() {
     return (
       <Screen onRefresh={refreshPredictions} refreshing={loadingPredictions}>
         <Text style={st.title} accessibilityRole="header">My record</Text>
+        <ModelRecord />
         <ErrorState message={predictionsError} onRetry={refreshPredictions} />
       </Screen>
     );
@@ -48,6 +51,7 @@ export default function Record() {
     return (
       <Screen>
         <Text style={st.title} accessibilityRole="header">My record</Text>
+        <ModelRecord />
         {calls.length > 0 ? (
           <>
             <Card style={st.pendingCard}>
@@ -92,6 +96,7 @@ export default function Record() {
   return (
     <Screen onRefresh={refreshPredictions} refreshing={loadingPredictions}>
       <Text style={st.title} accessibilityRole="header">My record</Text>
+      <ModelRecord />
 
       <View style={st.stats}>
         <View style={st.stat}>

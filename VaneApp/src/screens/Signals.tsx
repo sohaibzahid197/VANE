@@ -9,7 +9,7 @@ import { Card, Disclaimer, ErrorState, Loading, Screen, Segmented, Text, tapSlop
 import { HORIZONS, type Coin, type Horizon, seriesPath, toPath } from '../signals.ts';
 import { useStore } from '../store.tsx';
 import { isCoinLocked } from '../config.ts';
-import { relativeTime, useSignals } from '../useSignals.ts';
+import { isStale, relativeTime, useSignals } from '../useSignals.ts';
 import type { Polls } from '../api.ts';
 import { IconLock, IconStar } from '../icons.tsx';
 
@@ -132,14 +132,18 @@ export default function Signals({
 
   const coins = data?.coins ?? [];
   const updated = relativeTime(data?.updatedAt ?? '');
+  // Stale is stated, not implied. A missed publish otherwise looks identical
+  // to a fresh one, and the prices on screen would be presented as current.
+  const stale = isStale(data?.updatedAt ?? '');
 
   return (
     <Screen onRefresh={reload} refreshing={loading}>
       <View style={st.head}>
         <View>
           <Text style={st.brand} accessibilityRole="header">VANE</Text>
-          <Text style={st.date}>
+          <Text style={[st.date, stale && st.dateStale]}>
             {updated ? `Updated ${updated}` : 'Live signals'}
+            {stale ? ' · may be out of date' : ''}
           </Text>
         </View>
         <View style={st.tierPill}>
@@ -211,6 +215,7 @@ function useStyles() {
     alignItems: 'flex-start', marginTop: h(6), marginBottom: h(16),
   },
   brand: { color: C.accent, fontSize: f(15), fontWeight: '700', letterSpacing: 4 },
+  dateStale: { color: C.down },
   date: { color: C.faint, fontSize: f(12), marginTop: h(4) },
   tierPill: {
     borderWidth: 1, borderColor: C.cardBorder, borderRadius: w(20),

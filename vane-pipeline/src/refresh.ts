@@ -74,6 +74,28 @@ async function main() {
     console.warn(`resolvePredictions failed: ${(e as Error).message}`);
   }
 
+  // VANE's own record. Recorded on every run and graded at close, so the app
+  // can show a measured hit rate instead of an assertion. Isolated like the
+  // others: a failure here must not take the signals down with it.
+  try {
+    const { recordCalls, gradeCalls, scorecard } = await import('./scorecard.ts');
+    const recorded = await recordCalls(db, coins, HORIZONS_ALL);
+    const g = await gradeCalls(db, prices);
+    const rows = await scorecard(db);
+    await db.doc('public/scorecard').set({
+      updatedAt: new Date().toISOString(),
+      rows,
+    });
+    health.scorecard = { ok: true, recorded, ...g };
+    console.log(
+      `scorecard: recorded ${recorded}, graded ${g.graded}, ties ${g.ties}, ` +
+        rows.map((r) => `${r.horizon} ${r.correct}/${r.graded}`).join(' '),
+    );
+  } catch (e) {
+    health.scorecard = { ok: false, error: (e as Error).message };
+    console.warn(`scorecard failed: ${(e as Error).message}`);
+  }
+
   try {
     const p = await aggregatePolls(db, known);
     health.polls = { ok: true, ...p };

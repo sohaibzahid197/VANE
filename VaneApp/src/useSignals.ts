@@ -177,6 +177,22 @@ export function useSignals(): SignalsState {
   };
 }
 
+/**
+ * How old a snapshot may be before the app should say so out loud.
+ *
+ * The refresh cron targets 30 minutes, but GitHub drops scheduled runs, so
+ * anything past 90 minutes means a publish was missed rather than merely
+ * delayed. Silence at that point is the app quietly presenting stale prices
+ * as current.
+ */
+export const STALE_AFTER_MS = 90 * 60_000;
+
+/** True when a snapshot is old enough that the user should be warned. */
+export function isStale(updatedAt: string): boolean {
+  const t = Date.parse(updatedAt);
+  return Number.isFinite(t) && Date.now() - t > STALE_AFTER_MS;
+}
+
 /** "Updated 4 minutes ago" — staleness has to be visible on a live feed. */
 export function relativeTime(iso: string): string {
   if (!iso) return '';

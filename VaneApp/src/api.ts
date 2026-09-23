@@ -179,3 +179,50 @@ export async function fetchSignals(entitled = false): Promise<Snapshot> {
 
   return { coins, updatedAt: raw.updatedAt ?? '', horizons };
 }
+
+
+/** VANE's own hit rate per horizon, as published by the pipeline. */
+export type ScoreRow = {
+  horizon: Horizon;
+  graded: number;
+  correct: number;
+  /** Null until the sample is large enough for the number to mean anything. */
+  hitRate: number | null;
+};
+
+const SCORECARD_URL = `${BASE}/public/scorecard`;
+
+/**
+ * Fetch VANE's own track record.
+ *
+ * World-readable on purpose: it is the one claim about this product that a
+ * buyer should be able to check before paying, and the whole point is that it
+ * is measured rather than asserted. Returns [] on any failure — an absent
+ * scorecard renders as nothing, never as a fabricated number.
+ */
+export async function fetchScorecard(): Promise<ScoreRow[]> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(SCORECARD_URL, {
+      signal: ctl.signal,
+      headers: await appCheckHeader(),
+    });
+    if (!res.ok) return [];
+    const body = await res.json();
+    const raw = unwrap({ mapValue: { fields: body.fields ?? {} } });
+    const rows = Array.isArray(raw?.rows) ? raw.rows : [];
+    return rows
+      .filter((r: any) => FALLBACK_HORIZONS.includes(r?.horizon))
+      .map((r: any) => ({
+        horizon: r.horizon as Horizon,
+        graded: Number(r.graded) || 0,
+        correct: Number(r.correct) || 0,
+        hitRate: typeof r.hitRate === 'number' ? r.hitRate : null,
+      }));
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}

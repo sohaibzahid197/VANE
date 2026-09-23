@@ -2,9 +2,16 @@ name: refresh-signals
 
 on:
   schedule:
-    # Every 30 minutes. 15 would need 2,880 runs/month, which exceeds the
-    # 2,000 free minutes on a private repo. Make the repo public to go to */15.
+    # TWO schedules, deliberately offset.
+    #
+    # GitHub's cron is best-effort: it delays runs under load and silently
+    # drops them entirely. Observed in practice on this repo — one scheduled
+    # run landed in a three-hour window against a */30 schedule, and the app
+    # told users "Updated 1h ago". Two offset schedules rarely get skipped
+    # together, so this is redundancy rather than a doubling of frequency.
+    # The concurrency group below collapses any overlap into one run.
     - cron: '*/30 * * * *'
+    - cron: '15,45 * * * *'
   workflow_dispatch:
 
 concurrency:
