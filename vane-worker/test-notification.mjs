@@ -9,7 +9,11 @@
 import { readFileSync } from 'node:fs';
 import { createSign } from 'node:crypto';
 
-const [, , ISSUER_ID, ENV = 'Production'] = process.argv;
+// Sandbox by default. Production returns 401 for an app that has never been
+// released — the credentials are fine, there is simply no production app for
+// the key to act on — so defaulting to Production made a working setup look
+// broken.
+const [, , ISSUER_ID, ENV = 'Sandbox'] = process.argv;
 if (!ISSUER_ID) {
   console.error('usage: node test-notification.mjs <ISSUER_ID> [Sandbox|Production]');
   process.exit(1);
