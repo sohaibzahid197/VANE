@@ -1,6 +1,21 @@
 name = "vane-entitlement"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
+# Attach a public *.workers.dev URL.
+#
+# Without this the deploy still succeeds — the code uploads and shows in
+# `wrangler deployments list` — but no route is bound, so the hostname does
+# not resolve at all. Apple's webhooks would silently go nowhere and every
+# purchase would fail to validate, with a green deploy as the only evidence.
+workers_dev = true
+# No per-version preview URLs.
+#
+# Cloudflare keeps every deployed version reachable at its own hostname. For
+# most Workers that is a convenience; for the one that decides who has paid it
+# is a liability, because a version with a security regression stays live at
+# its own URL after the fix has shipped to the main one. There is one
+# entitlement service and it is the current deployment.
+preview_urls = false
 
 [vars]
 BUNDLE_ID = "com.vane.app"

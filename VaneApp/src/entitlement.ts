@@ -16,14 +16,12 @@ import { FIREBASE_PROJECT_ID } from './firebaseConfig.ts';
 /**
  * Where the receipt validator lives.
  *
- * MUST BE REPLACED WITH THE REAL URL BEFORE SHIPPING. A workers.dev hostname
- * includes the account subdomain — `https://vane-entitlement.<subdomain>
- * .workers.dev` — and `wrangler deploy` prints the exact value. The host
- * below is a placeholder that does not resolve, and while it stands every
- * purchase and every restore fails silently: validatePurchase catches the
- * network error and returns null, so the user is charged and never entitled.
+ * This must stay in step with the deployed Worker. If it ever points at a
+ * host that does not resolve, every purchase and every restore fails
+ * silently — validatePurchase catches the network error and returns null, so
+ * the user is charged and never entitled, with nothing logged anywhere.
  */
-export const VALIDATE_URL = 'https://vane-entitlement.REPLACE-ME.workers.dev/validate';
+export const VALIDATE_URL = 'https://vane-entitlement.letsdev-sohaib.workers.dev/validate';
 
 /** A stalled request must not hang the paywall; RN's fetch has no timeout. */
 const TIMEOUT_MS = 12_000;
