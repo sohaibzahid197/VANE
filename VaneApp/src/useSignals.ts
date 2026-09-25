@@ -28,7 +28,7 @@ export type SignalsState = {
 // person to sign in on the same device.
 const CACHE_KEY_FREE = 'vane.signals.free.v1';
 const CACHE_KEY_PAID = 'vane.signals.paid.v1';
-const cacheKey = () => (entitled ? CACHE_KEY_PAID : CACHE_KEY_FREE);
+const cacheKey = (paid: boolean) => (paid ? CACHE_KEY_PAID : CACHE_KEY_FREE);
 
 /** Every key this module has ever written, for a thorough clear. */
 const ALL_CACHE_KEYS = [CACHE_KEY_FREE, CACHE_KEY_PAID, 'vane.signals.v1'];
@@ -104,7 +104,7 @@ async function hydrate() {
   if (hydrated) return;
   hydrated = true;
   try {
-    const raw = await AsyncStorage.getItem(cacheKey());
+    const raw = await AsyncStorage.getItem(cacheKey(entitled));
     if (!raw) return;
     const cached = JSON.parse(raw) as Snapshot;
     // Never overwrite a live payload that landed while we were reading disk.
@@ -141,7 +141,12 @@ async function load(force: boolean): Promise<void> {
       // An empty document is a pipeline failure, not an empty state.
       if (snap.coins.length === 0) throw new Error('No signals published yet');
       setStore({ data: snap, stale: false, error: null, fetchedAt: Date.now() });
-      AsyncStorage.setItem(cacheKey(), JSON.stringify(snap)).catch(() => {});
+      // Keyed on what the SERVER served, not on what we asked for. An
+      // expired subscriber still requests the paid document, gets 403 and
+      // falls back to the free one — writing that under the paid key put
+      // three coins in the paid slot, to be rendered as stale paid data if
+      // they ever re-subscribed.
+      AsyncStorage.setItem(cacheKey(snap.paid), JSON.stringify(snap)).catch(() => {});
     } catch (e) {
       setStore({ error: (e as Error).message || 'Could not reach the signals service' });
       // No mock fallback: sample prices during a real outage look like live

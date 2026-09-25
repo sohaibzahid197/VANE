@@ -61,6 +61,8 @@ const signed = (n: number) =>
   Number.isFinite(n) ? `${n >= 0 ? '+' : ''}${n.toFixed(1)}%` : '—';
 
 export type Snapshot = {
+  /** True when the PAID document served this snapshot. */
+  paid: boolean;
   coins: Coin[];
   updatedAt: string;
   horizons: Horizon[];
@@ -108,10 +110,16 @@ const FALLBACK_HORIZONS: Horizon[] = ['24H', '7D', '30D'];
  * window instead of breaking.
  */
 export async function fetchSignals(entitled = false): Promise<Snapshot> {
+  // `paid` reports which document actually served this snapshot, which is not
+  // always the one that was asked for: an expired subscriber requests the paid
+  // document, gets 403, and falls back to the free one. Caching that result
+  // under the paid key wrote free data into the paid slot.
+
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
 
   let body: any;
+  let servedPaid = false;
   try {
     // Attested even for the free document: once App Check is enforced on
     // Firestore, an unattested scraper can no longer burn the 50k/day read
@@ -134,6 +142,8 @@ export async function fetchSignals(entitled = false): Promise<Snapshot> {
 
     if (!res) {
       res = await fetch(FREE_URL, { signal: ctl.signal, headers });
+    } else {
+      servedPaid = true;
     }
 
     if (!res.ok) throw new Error(`Signals unavailable (${res.status})`);
@@ -177,7 +187,7 @@ export async function fetchSignals(entitled = false): Promise<Snapshot> {
     } satisfies Coin;
   });
 
-  return { coins, updatedAt: raw.updatedAt ?? '', horizons };
+  return { coins, updatedAt: raw.updatedAt ?? '', horizons, paid: servedPaid };
 }
 
 
