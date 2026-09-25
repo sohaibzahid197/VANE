@@ -96,6 +96,26 @@ async function main() {
     console.warn(`scorecard failed: ${(e as Error).message}`);
   }
 
+  // Push. Isolated like everything else here: a notification failure must
+  // never take the signals down with it.
+  try {
+    const { notifyFlips } = await import('./notify.ts');
+    const n = await notifyFlips(
+      db,
+      coins.map((c) => ({ sym: c.sym, up: c.up })),
+    );
+    health.notify = { ok: true, ...n };
+    console.log(
+      n.flipped.length === 0
+        ? 'no signal flips'
+        : `flips ${n.flipped.join(',')} -> ${n.sent}/${n.targeted} sent` +
+            (n.pruned ? `, ${n.pruned} dead token(s) pruned` : ''),
+    );
+  } catch (e) {
+    health.notify = { ok: false, error: (e as Error).message };
+    console.warn(`notifyFlips failed: ${(e as Error).message}`);
+  }
+
   try {
     const p = await aggregatePolls(db, known);
     health.polls = { ok: true, ...p };

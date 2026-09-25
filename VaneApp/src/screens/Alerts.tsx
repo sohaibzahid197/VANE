@@ -21,13 +21,23 @@ import {
  * switch that animates and does nothing is worse than an absent feature, so
  * they are gone until there is a sender behind them.
  */
-const ALERTS: { title: string; desc: string }[] = [
-  { title: 'Daily digest', desc: 'One summary at 08:00 local' },
-];
-
 /** Index of the digest within the persisted alerts array. Unchanged so an
  *  existing install's stored preference still maps to the right row. */
 const DIGEST_INDEX = 3;
+
+const ALERTS: { title: string; desc: string; index: number }[] = [
+  // Back, because there is finally a sender behind it. The pipeline diffs
+  // each coin's direction against the previous run and pushes once per user
+  // however many coins turned — see vane-pipeline/src/notify.ts. Only
+  // watchlisted coins qualify, so the user chose every one of them.
+  {
+    title: 'Signal flips',
+    desc: 'When a coin on your watchlist changes direction',
+    index: 1,
+  },
+  { title: 'Daily digest', desc: 'One summary at 08:00 local', index: DIGEST_INDEX },
+];
+
 
 export default function Alerts({
   onPaywall, onBack,
@@ -74,7 +84,7 @@ export default function Alerts({
   // which rendered an "Unlock all alerts with Pro" button on a screen where
   // nothing was locked.
   const anyLocked = useMemo(
-    () => ALERTS.some((_, i) => isAlertLocked(PRO_ALERT[DIGEST_INDEX + i] ?? false, isPro)),
+    () => ALERTS.some((a) => isAlertLocked(PRO_ALERT[a.index] ?? false, isPro)),
     [isPro],
   );
 
@@ -118,8 +128,7 @@ export default function Alerts({
         </Card>
       )}
 
-      {ALERTS.map(({ title, desc }) => {
-        const i = DIGEST_INDEX;
+      {ALERTS.map(({ title, desc, index: i }) => {
         const pro = PRO_ALERT[i];
         const locked = isAlertLocked(pro, isPro);
         const on = alerts[i] && !locked;
