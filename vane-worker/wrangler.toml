@@ -25,14 +25,21 @@ FIREBASE_PROJECT_ID = "vane-crypto"
 # ID token into a uid. Leaving it unset makes EVERY /validate call return 401,
 # which reads like an auth bug rather than the config bug it is.
 FIREBASE_API_KEY = "AIzaSyDN4z8nc3gUAMSuGwEak9hV_JYK-9DsuI0"
-# A Sandbox purchase is free. A production deployment that honours one gives
-# the product away to anyone with a sandbox tester account. Set "Sandbox" only
-# on a staging deployment.
-# A sandbox purchase costs nothing, so a production deployment that honours
-# one gives the product away to anyone with a tester account. Set "Sandbox"
-# only while testing, and set it back the moment the test passes — which is
-# what happened here.
-ALLOWED_ENVIRONMENT = "Production"
+# Both environments, comma separated.
+#
+# Production alone was a launch blocker, not a safeguard. TestFlight buys in
+# Sandbox and so does App Review, so every tester and every reviewer would
+# have purchased successfully, been refused here with a 403, and been told
+# their connection was at fault.
+#
+# The exposure is small: a Sandbox Apple Account exists only where the
+# developer creates one in App Store Connect, so a member of the public cannot
+# make a free purchase this way. The environment is recorded on every
+# entitlement, so a Sandbox grant is always identifiable afterwards.
+#
+# This stays as-is after launch. Real buyers are Production; reviewers of
+# every future update are still Sandbox.
+ALLOWED_ENVIRONMENT = "Production,Sandbox"
 
 # Secrets, set with `wrangler secret put NAME` and never committed:
 #   APPLE_KEY_ID             the .p8 key's id (App Store Connect -> Integrations)
