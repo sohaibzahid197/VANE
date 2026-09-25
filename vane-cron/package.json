@@ -1,0 +1,15 @@
+{
+  "name": "vane-cron",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260921.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.137.0"
+  }
+}

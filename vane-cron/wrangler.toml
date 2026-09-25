@@ -1,0 +1,20 @@
+name = "vane-cron"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+# Every 15 minutes — the cadence the pipeline was always configured for and
+# has never actually had. GitHub's own scheduler delivered 11% of it.
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+GITHUB_OWNER = "sohaibzahid197"
+GITHUB_REPO = "VANE"
+GITHUB_WORKFLOW = "refresh.yml"
+GITHUB_REF = "main"
+
+# Secret, set with `wrangler secret put GITHUB_TOKEN`:
+#   GITHUB_TOKEN  a FINE-GRAINED token scoped to this repository only, with
+#                 Actions: Read and write. Nothing else — not Contents, not
+#                 Workflows. Note fine-grained tokens expire (a year at most)
+#                 and the failure is silent, so diarise the renewal.

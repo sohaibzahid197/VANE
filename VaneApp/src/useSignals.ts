@@ -6,6 +6,7 @@
 // coin at the same moment in two tabs of one app.
 
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchPolls, fetchSignals, type Polls, type Snapshot } from './api.ts';
 
@@ -166,6 +167,21 @@ export function useSignals(): SignalsState {
 
   useEffect(() => {
     load(false).catch(() => {});
+
+    // And whenever the app returns to the foreground.
+    //
+    // Without this the screen showed the age of whatever was fetched when it
+    // last mounted, with no attempt to get anything newer — so a user who
+    // backgrounded the app for two hours came back to a stale warning about
+    // data that had been refreshed server-side long since. The store and the
+    // record card already listen for this; the signals did not.
+    //
+    // load() still honours its own freshness window, so a quick app switch
+    // costs nothing.
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') load(false).catch(() => {});
+    });
+    return () => sub.remove();
   }, []);
 
   const reload = useCallback(() => {

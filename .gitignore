@@ -48,3 +48,5 @@ docs/
 # Worker dependencies and local wrangler state
 vane-worker/node_modules/
 vane-worker/.wrangler/
+vane-cron/node_modules/
+vane-cron/.wrangler/
