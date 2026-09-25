@@ -11,6 +11,7 @@
 // It renders nothing. It exists to be inside the provider.
 
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { validatePurchase } from './entitlement.ts';
 import {
   claimTransaction,
@@ -53,16 +54,27 @@ export default function PurchaseRecovery() {
     // Pull, rather than wait. An interrupted purchase is not guaranteed to be
     // re-emitted, so asking the store outright is the only deterministic way
     // to find one.
-    void (async () => {
+    const sweep = async () => {
       for (const tx of await pendingTransactions()) {
         if (!alive) return;
         await handle(tx);
       }
-    })();
+    };
+
+    void sweep();
+
+    // And on every foreground. The paywall tells the user to reopen the app,
+    // and most people do that by switching back to it rather than killing it
+    // — which used to do nothing at all, because this was a mount-only effect
+    // and the tab never unmounts.
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') void sweep();
+    });
 
     const off = onPurchaseRecovered((transaction) => handle(transaction));
     return () => {
       alive = false;
+      sub.remove();
       off();
     };
   }, [setPro]);

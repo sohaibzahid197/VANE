@@ -42,13 +42,22 @@ export type Env = {
   APPLE_ISSUER_ID: string;
   APPLE_PRIVATE_KEY: string;
   /**
-   * Which store environment this deployment honours.
+   * Which store environments this deployment honours, comma separated.
    *
-   * A Sandbox purchase costs nothing, so a production Worker that accepts
-   * Sandbox transactions gives away the product to anyone with a sandbox
-   * tester account. Set to 'Sandbox' only on a staging deployment.
+   * Both, by default, and that is a deliberate reversal. Refusing Sandbox
+   * looked prudent and was in fact a launch blocker: TestFlight purchases are
+   * Sandbox, and so are App Review's. Every tester and every reviewer would
+   * have bought successfully, been refused by this service, and been shown a
+   * message blaming their network — a guideline 3.1.1 rejection produced by
+   * our own defence.
+   *
+   * The risk it was guarding against is small. A Sandbox purchase requires a
+   * Sandbox Apple Account, and those exist only where the developer creates
+   * them in App Store Connect; a member of the public cannot make one. The
+   * environment is recorded on the entitlement either way, so a Sandbox grant
+   * is always identifiable after the fact.
    */
-  ALLOWED_ENVIRONMENT: Environment;
+  ALLOWED_ENVIRONMENT: string;
 };
 
 /**
@@ -79,6 +88,14 @@ function rateLimited(uid: string): boolean {
     }
   }
   return recent.length > RATE_LIMIT.max;
+}
+
+/** Both environments unless the deployment narrows it. */
+function environmentAllowed(env: Env, seen: Environment): boolean {
+  const allowed = (env.ALLOWED_ENVIRONMENT ?? 'Production,Sandbox')
+    .split(',')
+    .map((s) => s.trim());
+  return allowed.includes(seen);
 }
 
 const json = (body: unknown, status = 200) =>
@@ -133,18 +150,21 @@ async function validate(request: Request, env: Env): Promise<Response> {
 
   if (rateLimited(uid)) return json({ error: 'too many requests' }, 429);
 
-  const body = (await request.json().catch(() => null)) as { transactionId?: string } | null;
+  const body = (await request.json().catch(() => null)) as { transactionId?: unknown } | null;
   const transactionId = body?.transactionId;
-  if (!transactionId) return json({ error: 'missing transactionId' }, 400);
+  // Validated, not merely declared. The type said string and nothing checked
+  // it, so an array, a 10,000-character string or a URL-encoded query broke
+  // the Apple request URL and surfaced as a generic 500 — after a pointless
+  // round trip to Apple. StoreKit transaction ids are short decimal numbers.
+  if (typeof transactionId !== 'string' || !/^[0-9]{1,32}$/.test(transactionId)) {
+    return json({ error: 'missing transactionId' }, 400);
+  }
 
   const { apple, db } = config(env);
   const tx = await getTransaction(apple, transactionId);
   if (!tx) return json({ error: 'unknown transaction' }, 404);
 
-  // A Sandbox purchase is free. Accepting one in production hands the product
-  // to anyone with a sandbox tester account — and, via the link below, to
-  // however many accounts they care to validate it against.
-  if (tx.environment !== (env.ALLOWED_ENVIRONMENT ?? 'Production')) {
+  if (!environmentAllowed(env, tx.environment)) {
     return json({ error: 'wrong environment' }, 403);
   }
 
@@ -163,6 +183,25 @@ async function validate(request: Request, env: Env): Promise<Response> {
   if (!owner) await linkTransaction(db, tx.originalTransactionId, uid);
 
   const verdict = entitlementFrom(tx, PRODUCT_IDS, env.BUNDLE_ID);
+
+  // An OLD transaction must not revoke a NEWER subscription.
+  //
+  // A purchase whose validation once failed is deliberately left unfinished,
+  // so the app retries it on every launch — forever. If the user later
+  // re-subscribed, that stale transaction now reports itself expired, and
+  // writing its verdict unconditionally overwrote a live entitlement with
+  // active:false. The user paid, and lost Pro at every cold start. `notify`
+  // has had this guard since it was written; `validate` did not.
+  const current = await readEntitlement(db, uid);
+  const eventAt = new Date(tx.purchaseDate);
+  if (!verdict.active && current && current.updatedAt > eventAt) {
+    return json({
+      active: false,
+      superseded: true,
+      expiresAt: verdict.expiresAt.toISOString(),
+    });
+  }
+
   await writeEntitlement(db, uid, {
     active: verdict.active,
     productId: tx.productId,
@@ -172,7 +211,7 @@ async function validate(request: Request, env: Env): Promise<Response> {
     // Apple's clock, not ours. Stamping local wall-clock here made a
     // legitimate REFUND webhook — signed seconds earlier — look stale and get
     // dropped, so a refunded user kept access for the rest of the term.
-    updatedAt: new Date(tx.purchaseDate),
+    updatedAt: eventAt,
   });
 
   return json({ active: verdict.active, expiresAt: verdict.expiresAt.toISOString() });
@@ -250,7 +289,7 @@ async function notify(request: Request, env: Env): Promise<Response> {
   const tx = await getSubscriptionStatus(apple, originalTransactionId);
   if (!tx) return json({ ok: true, unknown: true });
 
-  if (tx.environment !== (env.ALLOWED_ENVIRONMENT ?? 'Production')) {
+  if (!environmentAllowed(env, tx.environment)) {
     return json({ ok: true, ignoredEnvironment: tx.environment });
   }
 

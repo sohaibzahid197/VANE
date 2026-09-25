@@ -38,6 +38,48 @@ const DOC = (uid: string) =>
 
 export type Entitlement = { active: boolean; expiresAt: number };
 
+/**
+ * Why a validation failed, and whether waiting will help.
+ *
+ * `retryable` is the field the UI actually needs. Every failure used to
+ * collapse to null and produce one message — "we couldn't confirm it just
+ * yet, reopen the app and it will finish automatically" — which is a
+ * reassuring lie for the cases that never resolve. A transaction Apple does
+ * not recognise, or one already claimed by another account, will say the
+ * same thing on every launch forever.
+ */
+export type ValidateFailure = { message: string; retryable: boolean };
+
+/** Turn the server's status into something a person can act on. */
+function explain(status: number): ValidateFailure {
+  switch (status) {
+    case 401:
+      return { message: 'We could not verify your account. Try signing in again.', retryable: true };
+    case 403:
+      return {
+        message: 'This purchase came from a store environment we do not accept.',
+        retryable: false,
+      };
+    case 404:
+      return {
+        message: 'The store has not published this purchase yet. This usually clears within a few minutes.',
+        retryable: true,
+      };
+    case 409:
+      return {
+        message: 'This subscription is already attached to another account on this device.',
+        retryable: false,
+      };
+    case 429:
+      return { message: 'Too many attempts. Please wait a minute and try again.', retryable: true };
+    default:
+      if (status >= 500) {
+        return { message: 'The server had a problem confirming this purchase.', retryable: true };
+      }
+      return { message: `The server refused this purchase (${status}).`, retryable: false };
+  }
+}
+
 const EXPIRED: Entitlement = { active: false, expiresAt: 0 };
 
 /**
@@ -101,23 +143,23 @@ export async function fetchEntitlement(uid: string): Promise<Entitlement | null>
  * transaction, a throttle and a timeout produced one identical alert with
  * nothing to act on — on a device, with no cable attached.
  */
-export let lastValidateFailure = '';
+export let lastValidateFailure: ValidateFailure | null = null;
 
 export async function validatePurchase(transactionId: string): Promise<Entitlement | null> {
-  const note = (why: string, extra?: unknown) => {
-    lastValidateFailure = why;
-    console.warn('[vane][validate]', why, extra ?? '');
+  const note = (f: ValidateFailure, detail?: unknown) => {
+    lastValidateFailure = f;
+    console.warn('[vane][validate]', f.message, `retryable=${f.retryable}`, detail ?? '');
   };
 
   try {
     if (!transactionId) {
-      note('no transaction id');
+      note({ message: 'The store did not return a purchase reference.', retryable: false });
       return null;
     }
 
     const token = await idToken();
     if (!token) {
-      note('not signed in');
+      note({ message: 'You are not signed in yet. Reopen the app and try again.', retryable: true });
       return null;
     }
 
@@ -151,19 +193,27 @@ export async function validatePurchase(transactionId: string): Promise<Entitleme
       // 404 unknown transaction, 403 wrong environment, 409 linked to another
       // account, 429 throttled, 500 the Apple lookup threw.
       const detail = await res.text().catch(() => '');
-      note(`server said ${res.status}`, `${detail.slice(0, 200)} (${Date.now() - startedAt}ms)`);
+      note(explain(res.status), `${detail.slice(0, 200)} (${Date.now() - startedAt}ms)`);
       return null;
     }
 
     const body = (await res.json()) as { active?: boolean; expiresAt?: string };
-    lastValidateFailure = '';
+    lastValidateFailure = null;
     return {
       active: body.active === true,
       expiresAt: Date.parse(body.expiresAt ?? '') || 0,
     };
   } catch (e) {
     const aborted = (e as Error)?.name === 'AbortError';
-    note(aborted ? `timed out after ${TIMEOUT_MS}ms` : 'request failed', String((e as Error)?.message ?? e));
+    note(
+      {
+        message: aborted
+          ? 'The server took too long to answer.'
+          : "We couldn't reach the server.",
+        retryable: true,
+      },
+      String((e as Error)?.message ?? e),
+    );
     return null;
   }
 }

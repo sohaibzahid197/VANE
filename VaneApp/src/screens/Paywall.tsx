@@ -261,15 +261,22 @@ export default function Paywall({ onClose }: { onClose: () => void }) {
         // Could not reach the validator. Do NOT finish the transaction:
         // leaving it in the StoreKit queue is what makes the purchase
         // replayable on next launch instead of lost.
+        // The message depends on whether waiting actually helps.
+        //
+        // One sentence used to cover every failure: "reopen the app and it
+        // will finish automatically". For a transaction Apple does not
+        // recognise, or one already claimed by another account, that is a
+        // reassuring lie repeated on every launch forever — and it blames the
+        // user's network for a server that answered in 200ms.
+        const f = lastValidateFailure;
         Alert.alert(
-          'Almost there',
-          "Your purchase went through, but we couldn't confirm it just yet. " +
-            'Reopen the app when you have a connection and it will finish ' +
-            'automatically.' +
-            // The reason, verbatim. Without it every failure — a rejected
-            // token, an unknown transaction, a throttle, a timeout — produced
-            // one identical message with nothing to act on.
-            (lastValidateFailure ? `\n\n(${lastValidateFailure})` : ''),
+          f && !f.retryable ? "We couldn't apply this purchase" : 'Almost there',
+          'Your purchase went through. ' +
+            (f?.message ?? "We couldn't confirm it just yet.") +
+            (f?.retryable === false
+              ? '\n\nYou have not lost the purchase — contact support and quote ' +
+                'this message, or tap Restore.'
+              : '\n\nIt will be applied automatically once we can confirm it.'),
         );
         return;
       }
