@@ -168,19 +168,34 @@ async function validate(request: Request, env: Env): Promise<Response> {
     return json({ error: 'wrong environment' }, 403);
   }
 
-  // The transaction to user link is WRITE-ONCE.
+  // The transaction moves to the caller, and the previous holder loses it.
   //
-  // Nothing proves the caller owns this transaction — Apple's response is
-  // identical whoever asks. Without this check, one real purchase entitles
-  // unlimited accounts: each attacker posts the same transaction id under
-  // their own token and Apple confirms it is genuine and active every time.
-  // It also hijacked the webhook route, because the last writer owned the
-  // link, so the real buyer's renewals and refunds landed on the attacker.
+  // This link used to be write-once, to stop one purchase entitling unlimited
+  // accounts. That was the wrong rule for anonymous auth: the uid lives in
+  // AsyncStorage and dies with the app, so reinstalling, switching phone or
+  // clearing data mints a new one. A returning subscriber tapping Restore was
+  // therefore indistinguishable from an attacker, and got a permanent 409
+  // while Apple carried on billing them — with no unlink path anywhere, for
+  // anyone. Restore is also the one recovery App Review always tests.
+  //
+  // Transferring keeps the property that mattered. A subscription follows the
+  // Apple Account, not the install, and exactly one app account holds it at a
+  // time: claiming it revokes it from whoever had it before. Sharing a
+  // transaction id between two people no longer entitles both — it hands the
+  // subscription back and forth, and each theft takes it from the thief.
   const owner = await uidForTransaction(db, tx.originalTransactionId);
   if (owner && owner !== uid) {
-    return json({ error: 'transaction belongs to another account' }, 409);
+    await writeEntitlement(db, owner, {
+      active: false,
+      productId: tx.productId,
+      expiresAt: new Date(0),
+      originalTransactionId: tx.originalTransactionId,
+      environment: tx.environment,
+      updatedAt: new Date(tx.purchaseDate),
+    });
+    console.warn('transferred', tx.originalTransactionId, 'from', owner, 'to', uid);
   }
-  if (!owner) await linkTransaction(db, tx.originalTransactionId, uid);
+  if (owner !== uid) await linkTransaction(db, tx.originalTransactionId, uid);
 
   const verdict = entitlementFrom(tx, PRODUCT_IDS, env.BUNDLE_ID);
 
