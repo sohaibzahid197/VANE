@@ -10,7 +10,7 @@
 // asserted one cannot, and it is the only claim here a buyer can check.
 
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { AppState, StyleSheet, View } from 'react-native';
 import { fetchScorecard, type ScoreRow } from './api.ts';
 import { useScale } from './responsive.ts';
 import { C } from './theme.ts';
@@ -44,8 +44,22 @@ export default function ModelRecord({ refreshKey = 0 }: { refreshKey?: number })
       .catch(() => {
         if (alive) setState({ kind: 'error' });
       });
+    // And on every foreground. The tab stays mounted for the app's lifetime,
+    // so without this the record was fetched once per cold start: a user who
+    // leaves the app open overnight sees yesterday's figures with nothing to
+    // say they are stale. The store already re-checks entitlement this way.
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') return;
+      fetchScorecard()
+        .then((rows) => {
+          if (alive && rows !== null) setState({ kind: 'ready', rows });
+        })
+        .catch(() => {});
+    });
+
     return () => {
       alive = false;
+      sub.remove();
     };
     // refreshKey changes when the user pulls to refresh, so both halves of the
     // Record screen reload together instead of disagreeing about freshness.
