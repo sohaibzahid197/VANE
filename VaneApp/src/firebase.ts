@@ -527,6 +527,80 @@ export async function deleteAccount(): Promise<WriteResult> {
   }
 }
 
+/**
+ * Mirror the watchlist and the signal-flip switch to `users/{uid}`.
+ *
+ * The notification sender runs server-side and can only see Firestore. Both of
+ * these lived exclusively in the app's AsyncStorage, so notifyFlips filtered on
+ * two fields that no client ever wrote — measured against live data: five users,
+ * all five holding a valid FCM token, none with a watchlist. The Pro "Signal
+ * flips" alert could therefore never fire for anyone.
+ *
+ * Capped at 100 symbols to match the rule. The cap is not cosmetic: this
+ * document is read by the sender on every run, so an unbounded list is a cheap
+ * way to make someone else's job expensive.
+ *
+ * Fails silently by design. A user whose sync fails still has a working app;
+ * they simply do not receive pushes, which is the same outcome as before.
+ */
+export async function saveAlertPrefs(prefs: {
+  watchlist: string[];
+  alertFlips: boolean;
+}): Promise<void> {
+  const s = await getSession();
+  if (!s) return;
+
+  const name =
+    `projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/users/${s.uid}`;
+
+  const watchlist = prefs.watchlist
+    .filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 10)
+    .slice(0, 100);
+
+  try {
+    // updateMask keeps this a merge, for the same reason saveFcmToken does: the
+    // rules' hasOnly() is evaluated against the MERGED document, so a wholesale
+    // write would drop fcmToken and break pushes entirely.
+    await post(
+      `${DOCS}:commit`,
+      {
+        writes: [
+          {
+            update: {
+              name,
+              fields: {
+                watchlist: {
+                  arrayValue: { values: watchlist.map((v) => ({ stringValue: v })) },
+                },
+                alertFlips: { booleanValue: prefs.alertFlips },
+              },
+            },
+            updateMask: { fieldPaths: ['watchlist', 'alertFlips'] },
+          },
+        ],
+      },
+      s.idToken,
+    );
+  } catch (e) {
+    // Non-fatal: the user simply does not receive pushes, exactly as before.
+    //
+    // But NOT silent in development. `alertFlips` is a new field, and the live
+    // security rules reject any key outside their hasOnly() list — so until the
+    // updated firestore.rules is DEPLOYED (it does not ship with the app
+    // binary), this whole write is refused and the watchlist does not sync
+    // either. Losing that to an empty catch is how a feature ends up looking
+    // finished while doing nothing, which is the failure this change exists to
+    // undo.
+    if (__DEV__) {
+      console.warn(
+        `saveAlertPrefs failed: ${(e as Error).message}\n` +
+          '  If this is PERMISSION_DENIED, deploy vane-pipeline/firestore.rules:\n' +
+          '    npx firebase-tools deploy --only firestore:rules --project vane-crypto',
+      );
+    }
+  }
+}
+
 /** Store the FCM token where the notification sender looks for it. */
 export async function saveFcmToken(token: string): Promise<void> {
   const s = await getSession();

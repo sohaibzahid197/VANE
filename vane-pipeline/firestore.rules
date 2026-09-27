@@ -47,10 +47,26 @@ service cloud.firestore {
       // Field-restricted. Without hasOnly(), a client could merge
       // {tier: 'pro'} into its own user doc and defeat the paywall anywhere
       // the app mirrors entitlement here to save a read.
+      // `alertFlips` is new, and it is what makes the signal-flip push actually
+      // respect the user's switch. Without a field here the preference lived
+      // only in the app's AsyncStorage, so the sender could not know it even in
+      // principle — it filtered on watchlist alone and would have pushed to
+      // people who had turned the alert off.
+      //
+      // Both `watchlist` and `alertFlips` are read SERVER-SIDE by notify.ts, so
+      // unlike the purely cosmetic fields they get type and size checks. An
+      // unbounded watchlist is a document the notification sender reads on every
+      // run, which makes it a cheap way to make someone else's job expensive.
       allow create, update: if signedInAs(uid)
         && request.resource.data.keys().hasOnly([
-             'displayName', 'currency', 'watchlist', 'fcmToken', 'createdAt'
-           ]);
+             'displayName', 'currency', 'watchlist', 'fcmToken', 'createdAt',
+             'alertFlips'
+           ])
+        && (!('watchlist' in request.resource.data)
+            || (request.resource.data.watchlist is list
+                && request.resource.data.watchlist.size() <= 100))
+        && (!('alertFlips' in request.resource.data)
+            || request.resource.data.alertFlips is bool);
       // A user must be able to erase their own account. App Store guideline
       // 5.1.1(v) requires in-app deletion for any app that creates accounts —
       // anonymous auth creates one — and GDPR Art. 17 requires it regardless.

@@ -21,6 +21,7 @@ import {
   type Prediction, type WriteResult,
   deleteAccount as deleteAccountRemote,
   ensureSignedIn, fetchPredictions, placePrediction, signOutFirebase,
+  saveAlertPrefs,
 } from './firebase.ts';
 
 // The selected plan is a real StoreKit product id, not a display label, so
@@ -49,6 +50,15 @@ export type VoidRow = {
 
 /** Which alert rows are Pro-only. Shared so Settings and Alerts agree. */
 export const PRO_ALERT = [false, true, true, false, true] as const;
+
+/**
+ * Index of the signal-flip switch.
+ *
+ * Mirrors FLIP_ALERT_INDEX in vane-pipeline/src/notify.ts. The array is
+ * positional and its indices have never been renumbered precisely so an
+ * existing install's stored preferences keep meaning what they meant.
+ */
+export const FLIP_ALERT_INDEX = 1;
 
 /**
  * Pro-gated alerts default to OFF. They used to default ON while rendering as
@@ -193,6 +203,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (!hydrated) return;
     setEntitled(state.isPro);
   }, [state.isPro, hydrated]);
+
+  /**
+   * Mirror the watchlist and the flip switch to Firestore.
+   *
+   * The notification sender runs server-side and can only see Firestore, so
+   * anything it filters on has to get there. Both of these lived only in
+   * AsyncStorage, which is why notifyFlips could never find a single target.
+   *
+   * An effect rather than a call inside toggleWatch/toggleAlert: it catches
+   * every path that changes either value, including hydration-time corrections
+   * and the reset on sign-out, instead of the two the setters happen to cover.
+   *
+   * Debounced, because starring several coins in a row would otherwise be one
+   * write each — and a write the user immediately supersedes is a write worth
+   * not making. Guarded on `hydrated` so restoring saved state does not write
+   * straight back on launch.
+   */
+  const flipOn = state.alerts[FLIP_ALERT_INDEX] === true;
+  const watchKey = state.watchlist.join(',');
+  useEffect(() => {
+    if (!hydrated) return;
+    const t = setTimeout(() => {
+      void saveAlertPrefs({ watchlist: state.watchlist, alertFlips: flipOn });
+    }, 800);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchKey, flipOn, hydrated]);
 
   // Re-check entitlement against the server.
   //

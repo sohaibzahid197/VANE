@@ -40,13 +40,16 @@ export type NotifyResult = {
 };
 
 /**
- * Index of the signal-flip switch inside the persisted alerts array.
+ * Index of the signal-flip switch inside the app's persisted alerts array.
  *
  * The array is positional and shared with the app, where indices have never
  * been renumbered precisely so an existing install's stored preferences keep
- * meaning what they meant. Index 1 has always been the flip alert.
+ * meaning what they meant. Index 1 has always been the flip alert, and
+ * store.tsx exports the same constant.
  *
- * THIS CONSTANT IS NOT USED, AND THAT IS THE BUG — see the note on notifyFlips.
+ * The app resolves that index to the boolean `alertFlips` on its user document,
+ * because the server cannot read AsyncStorage and should not have to know the
+ * app's array layout.
  */
 const FLIP_ALERT_INDEX = 1;
 
@@ -87,39 +90,6 @@ export function flipMessage(
 }
 
 /**
- * KNOWN BROKEN END TO END — this function can never send anything today.
- *
- * Verified on a device and against live Firestore. It filters targets on two
- * fields of `users/{uid}`, and NEITHER is ever populated:
- *
- *   watchlist — the app keeps the watchlist in AsyncStorage only. Nothing in
- *     VaneApp/src writes it to Firestore; `firebase.ts` has no watchlist code at
- *     all, even though firestore.rules already permits the field. Starring a
- *     coin fills the star and updates local state, and the server never learns
- *     of it. Measured: 5 users, all 5 with a valid FCM token, 0 with a
- *     watchlist. So `watch.some(...)` below fails for every user, every run.
- *
- *   the alert toggle — FLIP_ALERT_INDEX is defined and exported above and read
- *     by nothing. The preference lives in the app's AsyncStorage, and the rules'
- *     hasOnly() list has no field for it, so the server cannot know it even in
- *     principle.
- *
- * The consequence of fixing only the first half would be WORSE than the current
- * state: pushes would start flowing to users who had turned the toggle off,
- * which is a notification-consent problem rather than a missing feature. Both
- * halves have to land together —
- *
- *   1. add an alert field to the hasOnly() list in firestore.rules (and DEPLOY
- *      it; rules are not deployed by the app build)
- *   2. have the app write both watchlist and that field to users/{uid}
- *   3. filter on the field here, using FLIP_ALERT_INDEX
- *
- * Until then the Alerts screen offers a Pro toggle for a feature that cannot
- * fire. Nobody is affected today — the toggle is Pro-gated and there are no
- * subscribers — but the first person to pay for it would be.
- *
- * ---
- *
  * Send a flip notification to everyone watching an affected coin.
  *
  * Reads users rather than querying by watchlist: Firestore cannot index
@@ -132,6 +102,23 @@ export async function notifyFlips(
   db: Firestore,
   coins: CoinDirection[],
   maxUsers = 2000,
+  /**
+   * Messaging client, injectable for tests.
+   *
+   * getMessaging() is a frozen ESM export, so it cannot be redefined by a mock
+   * tracker — and who receives a push is a consent boundary that has to be
+   * testable. Same reason the CoinGecko provider accepts a fetch.
+   */
+  messagingImpl?: {
+    sendEachForMulticast: (m: {
+      tokens: string[];
+      notification: { title: string; body: string };
+      data: Record<string, string>;
+    }) => Promise<{
+      successCount: number;
+      responses: { error?: { code?: string } }[];
+    }>;
+  },
 ): Promise<NotifyResult> {
   const out: NotifyResult = { flipped: [], targeted: 0, sent: 0, pruned: 0 };
 
@@ -166,17 +153,32 @@ export async function notifyFlips(
   const targets: { uid: string; token: string }[] = [];
 
   for (const doc of users.docs) {
-    const d = doc.data() as { fcmToken?: string; watchlist?: unknown };
+    const d = doc.data() as {
+      fcmToken?: string;
+      watchlist?: unknown;
+      alertFlips?: unknown;
+    };
     if (!d.fcmToken) continue;
+
+    // OPT-IN, and absent means NO.
+    //
+    // An install that predates the preference has no `alertFlips` field, and the
+    // app's own default for this switch is off — it is Pro-gated and defaults
+    // off there too. Treating absent as "yes" would push to every existing user
+    // the first time this shipped, which is the one mistake a notification
+    // change cannot take back.
+    if (d.alertFlips !== true) continue;
+
     const watch = Array.isArray(d.watchlist) ? d.watchlist : [];
     if (!watch.some((s) => typeof s === 'string' && flippedSet.has(s))) continue;
+
     targets.push({ uid: doc.id, token: d.fcmToken });
   }
 
   out.targeted = targets.length;
   if (targets.length === 0) return out;
 
-  const messaging = getMessaging();
+  const messaging = messagingImpl ?? getMessaging();
   // Batches of 500, which is the multicast ceiling.
   for (let i = 0; i < targets.length; i += 500) {
     const page = targets.slice(i, i + 500);
