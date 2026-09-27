@@ -2,7 +2,7 @@
 // every signal has to be explainable in three sentences on screen 1d, and a
 // weighted sum of named features gives us those sentences for free.
 
-import type { Candle } from './fetch.ts';
+import type { Candle } from './providers/types.ts';
 import { ema, realizedVol, rsi, zscore } from './indicators.ts';
 
 export type Horizon = '24H' | '7D' | '30D';

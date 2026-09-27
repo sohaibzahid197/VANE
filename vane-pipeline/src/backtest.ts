@@ -1,12 +1,29 @@
-// Phase 0 gate. Walk-forward over real Binance history.
+// Phase 0 gate. Walk-forward over real market history.
 //
 // Two rules keep this honest:
 //   1. No random train/test split. Time series leak the future that way.
 //   2. Every model is scored against the naive baseline "tomorrow = today"
 //      (i.e. last 24h direction persists). Beating nothing is not a product.
+//
+// MIGRATED OFF BINANCE, and this run's result is therefore not comparable to
+// the previous one. Two things changed in the input data:
+//
+//   1. Binance's kline volume is volume traded WITHIN a candle. CoinGecko's is
+//      the ROLLING 24-HOUR volume at that timestamp. signal.ts feeds volume
+//      through zscore(volume, 48), so that feature now measures something
+//      different and smoother. There is no transformation that makes the two
+//      equivalent — a rolling window's first difference is not per-bar volume.
+//   2. Hourly depth is shorter and tier-dependent (about a year on Demo, two on
+//      Basic) rather than nine years.
+//
+// So the previously recorded edges (24H +0.7pp, 7D -0.9pp, 30D -4.4pp) do not
+// carry over and MUST be re-measured. calibration.json stays `enabled: false`
+// until a horizon clears MIN_EDGE on this data, which is what stops a changed
+// feature quietly switching on a published confidence percentage.
 
-import { fetchCandles, type Candle } from './fetch.ts';
-import { UNIVERSE } from './universe.ts';
+import type { Candle } from './providers/types.ts';
+import { coinGeckoFromEnv } from './providers/coingecko.ts';
+import { UNIVERSE_SIZE, fetchUniverse } from './coins.ts';
 import { HORIZON_HOURS, type Horizon, prepare, scoreAt } from './signal.ts';
 import { newBuckets, observe, reliability, toTable } from './calibrate.ts';
 import { writeFileSync } from 'node:fs';
@@ -15,9 +32,26 @@ import { writeFileSync } from 'node:fs';
 // large caps and then applying the table to thirty — including thin, young
 // alts with completely different vol regimes — makes the confidence number
 // meaningless for two thirds of the list.
-const SYMBOLS = UNIVERSE.map((c) => c.symbol);
+/**
+ * How many coins to calibrate on.
+ *
+ * Calibrate on the same universe the app publishes. Calibrating on five large
+ * caps and then applying the table to hundreds — including thin, young alts with
+ * completely different vol regimes — makes the confidence number meaningless for
+ * most of the list. Overridable because a full 250-coin run costs ~2,000 provider
+ * credits and this is a research tool, not a cron job.
+ */
+const BACKTEST_COINS = Number(process.env.BACKTEST_COINS ?? '40');
 const HORIZONS: Horizon[] = ['24H', '7D', '30D'];
-const CANDLES = 8000; // ~11 months of hourly data
+/**
+ * Hourly candles requested per coin.
+ *
+ * ~11 months. CoinGecko serves this through the paged range endpoint rather than
+ * in one response, and will return LESS when the window exceeds the plan's
+ * hourly depth — so the run reports what it actually received per coin instead
+ * of assuming it got what it asked for.
+ */
+const CANDLES = 8000;
 const WARMUP = 720; // skip the first 30 days so indicators are settled
 /**
  * Sampling stride, in hours.
@@ -74,19 +108,41 @@ export function buildRows(candles: Candle[], ahead: number, stride: number): Row
 }
 
 async function main() {
-  console.log(`\nVANE backtest — ${SYMBOLS.length} symbols x ${CANDLES} hourly candles`);
+  const provider = coinGeckoFromEnv();
+  const universe = (await fetchUniverse(provider, Math.min(BACKTEST_COINS, UNIVERSE_SIZE))).slice(
+    0,
+    BACKTEST_COINS,
+  );
+
+  console.log(`\nVANE backtest — ${universe.length} coins x up to ${CANDLES} hourly candles`);
   console.log(
     `walk-forward, non-overlapping windows, ${WARMUP}h warmup, ` +
       `pass needs >${(MIN_EDGE * 100).toFixed(0)}pp edge\n`,
   );
+  console.log(
+    '  NOTE: volume is now a rolling 24h series, not per-bar. Results are not\n' +
+      '  comparable to any run made against exchange klines.\n',
+  );
 
   const perHorizon = new Map<Horizon, Row[]>(HORIZONS.map((h) => [h, []]));
+  const short: string[] = [];
+  const to = Date.now();
+  const from = to - CANDLES * 3_600_000;
 
-  for (const symbol of SYMBOLS) {
-    process.stdout.write(`  fetching ${symbol.padEnd(9)} ... `);
-    const candles = await fetchCandles(symbol, '1h', CANDLES);
+  for (const coin of universe) {
+    process.stdout.write(`  fetching ${coin.sym.padEnd(9)} ... `);
+    const candles = await provider.candlesRange(coin.id, from, to, 'hourly');
     const closes = candles.map((c) => c.close);
     console.log(`${candles.length} candles`);
+
+    // The range endpoint returns LESS than asked for when the window exceeds the
+    // plan's hourly depth, silently. A coin with barely more than the warmup
+    // contributes almost nothing but still counts toward the apparent sample, so
+    // record it and report it rather than letting a thin run look like a full one.
+    if (candles.length < WARMUP + HORIZON_HOURS['30D'] + 2) {
+      short.push(`${coin.sym} (${candles.length}h)`);
+      continue;
+    }
 
     // Indicators depend only on the candles, so compute them once per symbol
     // instead of once per scored index.
@@ -109,6 +165,13 @@ async function main() {
         });
       }
     }
+  }
+
+  if (short.length) {
+    console.log(
+      `\n  SKIPPED ${short.length} coin(s) with too little history for a 30D ` +
+        `horizon:\n    ${short.join(', ')}`,
+    );
   }
 
   console.log('\n' + '─'.repeat(58));

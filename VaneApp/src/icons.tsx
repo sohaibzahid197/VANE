@@ -226,8 +226,25 @@ export function IconWarning({ size = 26, color = C.faint }: IconProps) {
   );
 }
 
+/** Tab: markets — a ranked list. */
+export function IconMarkets({ size = 22, color = C.faint, active }: IconProps) {
+  return (
+    <Svg {...base(size)}>
+      <Path
+        d="M4 6.5h16M4 12h16M4 17.5h11"
+        stroke={color}
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        fill="none"
+      />
+      <Circle cx={19} cy={17.5} r={2} fill={active ? color : 'none'} stroke={color} strokeWidth={1.5} />
+    </Svg>
+  );
+}
+
 export const TAB_ICONS: Record<string, React.FC<IconProps>> = {
   Signals: IconSignals,
+  Markets: IconMarkets,
   Predict: IconPredict,
   Record: IconRecord,
   Settings: IconSettings,

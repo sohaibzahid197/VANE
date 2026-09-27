@@ -4,7 +4,7 @@
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import type { Candle } from '../src/fetch.ts';
+import type { Candle } from '../src/providers/types.ts';
 import { HORIZON_HOURS, prepare, priceTarget, scoreAt, topReasons } from '../src/signal.ts';
 
 function series(n: number, fn: (i: number) => number): Candle[] {

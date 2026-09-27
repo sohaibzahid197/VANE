@@ -1,0 +1,131 @@
+// Reads the market data and chart history the pipeline publishes.
+//
+// Same two-document pattern as signals, and for the same reason: the split IS
+// the paywall. `public/markets_latest` carries the free coins and is
+// world-readable; `private/markets_all` carries all 250 and is readable only by
+// a caller the security rules judge entitled. An unentitled device never
+// receives the paid payload at all, so there is nothing for the client to
+// "lock" — a `locked` flag is a label on data already downloaded.
+//
+// Chart history follows the same rule, one document per coin:
+//   public/hist_BTC     free coins
+//   private/hist_XRP    everything else
+//
+// One document per coin holds ALL SEVEN ranges. Firestore bills per document
+// read, so this makes opening a coin one read and makes switching 24H -> 1Y
+// instant and free rather than a fresh network round trip per tap.
+
+import { BASE, TIMEOUT_MS, unwrap } from './api.ts';
+import { appCheckHeader } from './appCheck.ts';
+import { idToken } from './firebase.ts';
+import { toGlobal, toHistory, toMarket } from './marketsParse.ts';
+import type { GlobalMarket, History, Market } from './marketsParse.ts';
+
+// Types and pure parsing live in marketsParse.ts, which has no native imports
+// and is therefore unit-testable. This module is transport only, and re-exports
+// so callers have one import site for "market data".
+export { RANGES, compact, compactUnits } from './marketsParse.ts';
+export type {
+  GlobalMarket,
+  History,
+  Market,
+  Range,
+  Series,
+} from './marketsParse.ts';
+
+export type MarketsSnapshot = {
+  /** True when the PAID document served this snapshot, not when it was asked for. */
+  paid: boolean;
+  coins: Market[];
+  global: GlobalMarket | null;
+  updatedAt: string;
+  /** Provider name, for the attribution line the licence requires. */
+  source: string;
+};
+
+/**
+ * Fetch one document, preferring the paid copy when entitled.
+ *
+ * Shared by markets and history because the fallback rule is subtle and must
+ * not be written twice: `entitled` is the APP's belief, and the SERVER decides.
+ * A lapsed or refunded subscriber whose device has not caught up asks for the
+ * paid document, gets 401/403, and falls back to the free one — degrading to the
+ * shop window rather than showing an error. The returned `paid` flag reports
+ * which document actually answered, which is what the cache must be keyed on;
+ * keying on what was requested writes free data into the paid slot.
+ */
+async function fetchDoc(
+  freePath: string,
+  paidPath: string,
+  entitled: boolean,
+): Promise<{ raw: any; paid: boolean } | null> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  try {
+    // Attested even for the free document: once App Check is enforced, an
+    // unattested scraper can no longer burn the 50k/day read quota and take the
+    // app offline for real users.
+    const headers = await appCheckHeader();
+
+    let res: Response | null = null;
+    let servedPaid = false;
+
+    if (entitled) {
+      const token = await idToken();
+      if (token) {
+        res = await fetch(`${BASE}/${paidPath}`, {
+          signal: ctl.signal,
+          headers: { ...headers, Authorization: `Bearer ${token}` },
+        });
+        if (res.status === 401 || res.status === 403) res = null;
+        else servedPaid = true;
+      }
+    }
+
+    if (!res) {
+      res = await fetch(`${BASE}/${freePath}`, { signal: ctl.signal, headers });
+      servedPaid = false;
+    }
+
+    // 404 is a real answer — the pipeline has not published this yet — and is
+    // different from a failure to reach the network. Collapsing both to null
+    // would leave the screen unable to tell "nothing yet" from "broken".
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Unavailable (${res.status})`);
+
+    const body = await res.json();
+    return { raw: unwrap({ mapValue: { fields: body.fields ?? {} } }), paid: servedPaid };
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new Error('Request timed out');
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function fetchMarkets(entitled = false): Promise<MarketsSnapshot> {
+  const got = await fetchDoc('public/markets_latest', 'private/markets_all', entitled);
+  if (!got) {
+    return { paid: false, coins: [], global: null, updatedAt: '', source: '' };
+  }
+  const { raw, paid } = got;
+
+  const coins: Market[] = (Array.isArray(raw.coins) ? raw.coins : []).map(toMarket);
+
+  return {
+    paid,
+    coins,
+    global: raw.global ? toGlobal(raw.global) : null,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+    source: typeof raw.source === 'string' ? raw.source : '',
+  };
+}
+
+export async function fetchHistory(
+  sym: string,
+  entitled = false,
+): Promise<History | null> {
+  const got = await fetchDoc(`public/hist_${sym}`, `private/hist_${sym}`, entitled);
+  if (!got) return null;
+  return toHistory(got.raw, sym);
+}

@@ -16,9 +16,12 @@ import { useScale } from './responsive.ts';
 import { TAB_ICONS } from './icons.tsx';
 import type { Coin } from './signals.ts';
 import type { Polls } from './api.ts';
+import type { Market } from './markets.ts';
 import Onboarding from './screens/Onboarding.tsx';
 import Paywall from './screens/Paywall.tsx';
 import Signals from './screens/Signals.tsx';
+import Markets from './screens/Markets.tsx';
+import CoinChart from './screens/CoinChart.tsx';
 import CoinDetail from './screens/CoinDetail.tsx';
 import Record from './screens/Record.tsx';
 import Alerts from './screens/Alerts.tsx';
@@ -126,6 +129,14 @@ function MainTabs({
           />
         )}
       </Tabs.Screen>
+      <Tabs.Screen name="Markets">
+        {({ navigation }) => (
+          <Markets
+            onOpenCoin={(market) => navigation.navigate('Chart', { market })}
+            onPaywall={onPaywall}
+          />
+        )}
+      </Tabs.Screen>
       <Tabs.Screen name="Predict">
         {() => <PredictTab onPaywall={onPaywall} />}
       </Tabs.Screen>
@@ -176,6 +187,25 @@ export default function Navigation() {
                   onPaywallShown={() => setAutoPaywall(false)}
                 />
               )}
+            </Stack.Screen>
+            <Stack.Screen name="Chart">
+              {({ route, navigation }) => {
+                const p = route.params as { market?: Market } | undefined;
+                // No sample fallback on purpose: this screen exists because a
+                // fabricated price is worse than no screen. Without a real
+                // market row there is nothing honest to render, so go back.
+                if (!p?.market) {
+                  navigation.goBack();
+                  return null;
+                }
+                return (
+                  <CoinChart
+                    market={p.market}
+                    onBack={() => navigation.goBack()}
+                    onPaywall={() => navigation.navigate('Paywall')}
+                  />
+                );
+              }}
             </Stack.Screen>
             <Stack.Screen name="Coin">
               {({ route, navigation }) => {

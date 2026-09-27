@@ -18,15 +18,15 @@ import { appCheckHeader } from './appCheck.ts';
 import { idToken } from './firebase.ts';
 
 const PROJECT_ID = 'vane-crypto';
-const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
+export const BASE = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents`;
 const FREE_URL = `${BASE}/public/signals_latest`;
 const PAID_URL = `${BASE}/private/signals_all`;
 
 /** React Native's fetch has no default timeout; a stalled TCP hangs forever. */
-const TIMEOUT_MS = 12000;
+export const TIMEOUT_MS = 12000;
 
 /** Firestore REST wraps every value in a type tag; unwrap recursively. */
-function unwrap(v: any): any {
+export function unwrap(v: any): any {
   if (v == null) return null;
   if ('nullValue' in v) return null;
   // Whole numbers arrive as integerValue — a JSON *string*.
@@ -44,21 +44,11 @@ function unwrap(v: any): any {
   return null;
 }
 
-/**
- * Money formatting by magnitude. The cutoff is deliberately at 1000, not 100:
- * a three-digit asset like SOL at 214.60 rounded to $215 while the percentage
- * beside it came from the unrounded value, so a sub-$0.50 move rendered as an
- * identical price with a non-zero percent next to it.
- */
-function money(n: number): string {
-  if (!Number.isFinite(n)) return '—';
-  if (n >= 1000) return `$${Math.round(n).toLocaleString('en-US')}`;
-  if (n >= 1) return `$${n.toFixed(2)}`;
-  return `$${n.toFixed(4)}`;
-}
-
-const signed = (n: number) =>
-  Number.isFinite(n) ? `${n >= 0 ? '+' : ''}${n.toFixed(1)}%` : '—';
+// Formatting lives in format.ts so it can be unit tested without dragging in
+// App Check and Firebase. Re-exported here because callers already import these
+// from api.ts.
+export { money, signed } from './format.ts';
+import { money, signed } from './format.ts';
 
 export type Snapshot = {
   /** True when the PAID document served this snapshot. */

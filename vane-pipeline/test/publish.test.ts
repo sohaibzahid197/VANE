@@ -5,7 +5,7 @@
 
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import type { Candle } from '../src/fetch.ts';
+import type { Candle } from '../src/providers/types.ts';
 import { HORIZONS_ALL, buildCoin } from '../src/publish.ts';
 
 const HOUR = 3_600_000;

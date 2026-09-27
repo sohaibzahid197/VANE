@@ -2,10 +2,19 @@ name = "vane-cron"
 main = "src/index.ts"
 compatibility_date = "2026-09-01"
 
-# Every 15 minutes — the cadence the pipeline was always configured for and
-# has never actually had. GitHub's own scheduler delivered 11% of it.
+# THREE cadences, matching the three refresh modes. GitHub's own scheduler
+# delivered 11% of the single 15-minute schedule it used to be asked for, which
+# is why this Worker keeps the clock at all.
+#
+# The mode is derived from the cron expression in src/index.ts — Cloudflare tells
+# the handler which trigger fired, so one Worker covers all three.
+#
+#   */15 * * * *  prices   one provider call; also grades predictions
+#   7 */4 * * *   signals  recomputes the model
+#   23 3 * * *    history  rebuilds chart series; ALSO A LICENCE OBLIGATION,
+#                          because stored data must be refreshed every 24h
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/15 * * * *", "7 */4 * * *", "23 3 * * *"]
 
 [vars]
 GITHUB_OWNER = "sohaibzahid197"

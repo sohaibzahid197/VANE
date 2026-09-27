@@ -5,7 +5,7 @@
 // difference between ~10,000 and ~50,000 daily opens costing nothing.
 
 import { readFileSync } from 'node:fs';
-import type { Candle } from './fetch.ts';
+import type { Candle } from './providers/types.ts';
 import { type Bucket, confidenceUp } from './calibrate.ts';
 import { type Horizon, type Indicators, prepare, priceTarget, scoreAt, topReasons } from './signal.ts';
 

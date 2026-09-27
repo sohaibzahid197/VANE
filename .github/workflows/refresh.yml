@@ -1,37 +1,64 @@
 name: refresh-signals
 
+# THREE CADENCES, ONE WORKFLOW.
+#
+# The job used to do everything on one 15-minute schedule. That was affordable
+# against a keyless exchange API. Against a licensed provider with a monthly
+# credit budget it is not: 250 coins fetched 96 times a day is 720,000 credits a
+# month against a budget of 100,000.
+#
+# The three things this job does have genuinely different natural frequencies, so
+# they now run on their own schedules (see the header of src/refresh.ts for the
+# full reasoning and the credit arithmetic):
+#
+#   prices   every 15 min   1 provider call    — one /coins/markets page covers
+#                                                all 250 coins, and grading runs
+#                                                here because it needs current
+#                                                prices, not fresh candles
+#   signals  every 4 hours  ~250 calls         — the model reads hourly candles
+#   history  daily          ~500 calls         — and NEVER less often than daily:
+#                                                CoinGecko's terms permit storage
+#                                                only if the cache is refreshed
+#                                                at least every 24 hours
+#
+# About 66,000 credits a month of 100,000.
+#
+# GitHub's cron is best-effort — it delays runs under load and silently drops
+# them, measured here at an 88.7% drop rate over 31 hours. vane-cron fires these
+# by workflow_dispatch instead; the schedules below stay as a backstop, and the
+# concurrency group coalesces any overlap so a double fire costs nothing.
+
 on:
   schedule:
-    # TWO schedules, 15 minutes apart. Their fire times are DISJOINT
-    # (*/30 -> :00,:30; 15,45 -> :15,:45), so neither is a standby for the
-    # other's slot — together they simply run every 15 minutes.
-    #
-    # That is the point, and an earlier version of this comment had it wrong:
-    # this is a halving of the interval, not redundancy. GitHub's cron is
-    # best-effort, delaying runs under load and silently dropping them —
-    # observed here, with one run landing in a three-hour window against */30
-    # while the app told users "Updated 1h ago". Halving the interval halves
-    # the damage of any single drop: worst case after one skipped run falls
-    # from 60 minutes to 30.
-    #
-    # Actions minutes are free on a public repo, so the extra runs cost
-    # nothing there. What they do cost is Firestore writes — see scorecard.ts.
-    - cron: '*/30 * * * *'
-    - cron: '15,45 * * * *'
+    - cron: '*/15 * * * *'
+    - cron: '7 */4 * * *'
+    - cron: '23 3 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'prices | signals | history | full'
+        required: false
+        default: 'prices'
+        type: choice
+        options: [prices, signals, history, full]
 
 concurrency:
-  group: refresh
-  # Queue, do not kill. `true` cancels the OLDER run, which is the one that
-  # has already started publishing — and the only time two runs overlap is
-  # when GitHub has bunched delayed runs together, which is exactly the
-  # pathology this schedule exists to survive.
+  # Keyed per mode. A shared group would make the daily history rebuild and the
+  # 15-minute price run queue behind each other, and a slow history run would
+  # stall grading — which is the one thing that must stay on time.
+  group: refresh-${{ github.event.inputs.mode || github.event.schedule || 'manual' }}
+  # Queue, do not kill. `true` cancels the OLDER run, which is the one that has
+  # already started publishing — and the only time two runs overlap is when
+  # GitHub has bunched delayed runs together, which is exactly the pathology
+  # this schedule exists to survive.
   cancel-in-progress: false
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # History fetches ~500 series and is throttled to stay under the provider's
+    # rate limit, so it needs far longer than a price run.
+    timeout-minutes: 45
     # The pipeline is a subdirectory of the monorepo. Without this, every step
     # runs at the repo root, where there is no package.json at all.
     defaults:
@@ -52,7 +79,36 @@ jobs:
       # month against a 2,000-minute allowance.
       - run: npm ci --omit=dev || npm install --omit=dev
 
-      - name: Refresh signals
+      # Resolved in a shell step rather than a GitHub expression. The expression
+      # form for this is a chain of `&&`/`||` that silently evaluates to the
+      # wrong branch when one cron string is edited and the other is not, and a
+      # mode that quietly falls back to `prices` would mean history never
+      # rebuilds — which is a licence problem, not just a stale chart.
+      - name: Resolve mode
+        id: mode
+        working-directory: .
+        run: |
+          set -euo pipefail
+          INPUT="${{ github.event.inputs.mode }}"
+          SCHEDULE="${{ github.event.schedule }}"
+          if [ -n "$INPUT" ]; then
+            MODE="$INPUT"
+          else
+            case "$SCHEDULE" in
+              '7 */4 * * *') MODE=signals ;;
+              '23 3 * * *')  MODE=history ;;
+              *)             MODE=prices ;;
+            esac
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "Refreshing in mode: $MODE"
+
+      - name: Refresh
         run: npm run refresh
         env:
+          REFRESH_MODE: ${{ steps.mode.outputs.mode }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # A Demo key is enough for development. Commercial distribution needs
+          # a paid tier — CoinGecko's Demo plan carries no commercial licence.
+          COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+          COINGECKO_TIER: ${{ vars.COINGECKO_TIER || 'demo' }}

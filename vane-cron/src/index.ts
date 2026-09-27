@@ -33,7 +33,32 @@ export type Env = {
   GITHUB_TOKEN: string;
 };
 
-async function dispatch(env: Env): Promise<{ ok: boolean; status: number; detail: string }> {
+/**
+ * Which refresh mode a cron expression means.
+ *
+ * Kept as an exact match on the expression rather than a time calculation: the
+ * Worker and .github/workflows/refresh.yml both key off these strings, and a
+ * mismatch between them would silently run the wrong mode. An unrecognised
+ * expression falls back to `prices`, which is the cheap, safe default — the one
+ * mode that cannot exhaust a credit budget if it fires unexpectedly often.
+ */
+export function modeFor(cron: string): Mode {
+  switch (cron) {
+    case '7 */4 * * *':
+      return 'signals';
+    case '23 3 * * *':
+      return 'history';
+    default:
+      return 'prices';
+  }
+}
+
+export type Mode = 'prices' | 'signals' | 'history';
+
+async function dispatch(
+  env: Env,
+  mode: Mode,
+): Promise<{ ok: boolean; status: number; detail: string }> {
   const url =
     `https://api.github.com/repos/${env.GITHUB_OWNER}/${env.GITHUB_REPO}` +
     `/actions/workflows/${env.GITHUB_WORKFLOW}/dispatches`;
@@ -49,7 +74,9 @@ async function dispatch(env: Env): Promise<{ ok: boolean; status: number; detail
       'User-Agent': 'vane-cron',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ref: env.GITHUB_REF }),
+    // `inputs` is how the mode reaches the workflow. Without it every run
+    // would take the workflow's default and history would never rebuild.
+    body: JSON.stringify({ ref: env.GITHUB_REF, inputs: { mode } }),
   });
 
   // Success is 204 with an empty body. There is no run id in the response, so
@@ -69,13 +96,14 @@ export default {
    * tick either way, and the log is the only thing that survives to explain
    * why. GitHub's own schedules remain as the fallback.
    */
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const mode = modeFor(event.cron);
     ctx.waitUntil(
       (async () => {
         try {
-          const r = await dispatch(env);
+          const r = await dispatch(env, mode);
           if (r.ok) {
-            console.log(`dispatched ${env.GITHUB_WORKFLOW} (${r.status})`);
+            console.log(`dispatched ${env.GITHUB_WORKFLOW} mode=${mode} (${r.status})`);
             return;
           }
           // 403 and 404 are the two that matter and they are easy to confuse.
@@ -83,7 +111,7 @@ export default {
           // dispatched either, and answers 403 — the same as an expired or
           // under-scoped token.
           console.error(
-            `dispatch failed ${r.status}: ${r.detail}` +
+            `dispatch failed mode=${mode} ${r.status}: ${r.detail}` +
               (r.status === 403 || r.status === 404
                 ? ' — check the token has not expired, and that the workflow is enabled'
                 : ''),
@@ -103,11 +131,17 @@ export default {
    * prices, which the workflow's concurrency group already coalesces.
    */
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (new URL(request.url).pathname !== '/run') {
+    const url = new URL(request.url);
+    if (url.pathname !== '/run') {
       return new Response('vane-cron', { status: 200 });
     }
-    const r = await dispatch(env);
-    return new Response(JSON.stringify(r), {
+    // ?mode=history to force a rebuild without waiting for 03:23. Anything
+    // unrecognised becomes `prices`, so a typo cannot spend 500 credits.
+    const asked = url.searchParams.get('mode') ?? '';
+    const mode: Mode =
+      asked === 'signals' || asked === 'history' || asked === 'prices' ? asked : 'prices';
+    const r = await dispatch(env, mode);
+    return new Response(JSON.stringify({ ...r, mode }), {
       status: r.ok ? 200 : 502,
       headers: { 'Content-Type': 'application/json' },
     });
