@@ -38,8 +38,29 @@ export function money(n: number): string {
   return `${sign}$${v.toPrecision(3)}`;
 }
 
-export const signed = (n: number) =>
-  Number.isFinite(n) ? `${n >= 0 ? '+' : ''}${n.toFixed(1)}%` : '—';
+/**
+ * A signed percentage.
+ *
+ * One decimal place everywhere EXCEPT near zero, where it lies by rounding.
+ * Observed on the live Signals screen: Bitcoin at $84,426 with a 24H target of
+ * $84,462 — a real +0.043% move — rendered as "+0.0%" directly beside a target
+ * price that visibly differs from the current one. The two numbers contradicted
+ * each other on screen, so the app looked broken even though the arithmetic was
+ * right: the target is shown at full precision while the move was rounded to a
+ * place too coarse to hold it.
+ *
+ * Below 0.05% the value gets enough decimals to actually be non-zero. A genuine
+ * zero still reads "0.0%", because that is true.
+ */
+export const signed = (n: number): string => {
+  if (!Number.isFinite(n)) return '—';
+  const sign = n >= 0 ? '+' : '-';
+  const v = Math.abs(n);
+  if (v === 0) return '0.0%';
+  // toFixed(1) would round anything under 0.05 to "0.0".
+  if (v < 0.05) return `${sign}${v.toPrecision(1)}%`;
+  return `${sign}${v.toFixed(1)}%`;
+};
 
 /** Compact magnitude label for caps and volumes: $1.2T, $840.5B, $12.3M. */
 export function compact(n: number | null): string {

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "backtest": "node --experimental-strip-types src/backtest.ts",
+    "entitle": "node --experimental-strip-types src/dev-entitle.ts",
     "probe": "node --experimental-strip-types src/probe.ts",
     "purge": "node --experimental-strip-types src/purge.ts",
     "refresh": "node --experimental-strip-types src/refresh.ts",
