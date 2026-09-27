@@ -120,11 +120,22 @@ async function main() {
         '  To inspect output without publishing at all: DRY_RUN=1',
     );
   }
+  // Validated: an unparseable value made `projected` NaN, `NaN <= allowance`
+  // false, and the run printed "OVER BUDGET by NaN credits/month" and carried on.
+  const cadence = (name: string, fallback: number): number => {
+    const raw = process.env[name];
+    if (raw === undefined) return fallback;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) {
+      throw new Error(`${name} must be a non-negative number, got "${raw}"`);
+    }
+    return n;
+  };
   const budget = creditBudget(tier, {
     coins: UNIVERSE_SIZE,
-    pricesPerDay: Number(process.env.PRICES_PER_DAY ?? '96'),
-    signalsPerDay: Number(process.env.SIGNALS_PER_DAY ?? '6'),
-    historyPerDay: Number(process.env.HISTORY_PER_DAY ?? '1'),
+    pricesPerDay: cadence('PRICES_PER_DAY', 96),
+    signalsPerDay: cadence('SIGNALS_PER_DAY', 6),
+    historyPerDay: cadence('HISTORY_PER_DAY', 1),
   });
   console.log(
     `budget: ~${budget.projected.toLocaleString('en-US')} credits/month of ` +
@@ -148,6 +159,33 @@ async function main() {
   let global = null;
   if (mode !== 'history') {
     markets = await fetchUniverse(provider, UNIVERSE_SIZE);
+
+    // A SHORT MARKETS PAGE MUST ABORT, NOT PROCEED.
+    //
+    // This is the most destructive silent failure in the pipeline. markets() ends
+    // its paging loop on a short page, so a truncated response is a
+    // normal-SHAPED return value — and the only guard was that the list is
+    // non-empty.
+    //
+    // Everything downstream reads absence as DELISTING. Hand resolvePredictions
+    // and gradeCalls a 40-coin price map and they void every open prediction and
+    // every recorded call on the other 210 coins — permanently, since a voided
+    // row leaves the query window. saveUniverse then overwrites the registry with
+    // those 40, so staleCoins stops refreshing the rest (which is also the 24h
+    // licence floor), and the scorecard republishes from the survivors. The
+    // process exits 0 and resolver_health reports ok.
+    //
+    // Users' own track records would be destroyed by a provider hiccup.
+    const MIN_COVERAGE = 0.8;
+    if (markets.length < UNIVERSE_SIZE * MIN_COVERAGE) {
+      throw new Error(
+        `only ${markets.length} of ${UNIVERSE_SIZE} coins returned ` +
+          `(${((100 * markets.length) / UNIVERSE_SIZE).toFixed(0)}%, need ` +
+          `${MIN_COVERAGE * 100}%). Refusing to proceed: downstream treats a ` +
+          'missing coin as delisted and would void open predictions and graded ' +
+          'calls for every coin absent from this list.',
+      );
+    }
     try {
       global = await provider.global();
     } catch (e) {
@@ -193,8 +231,21 @@ async function main() {
       }
     }
 
-    if (coins.length === 0) {
-      throw new Error(`every coin failed:\n  ${failed.slice(0, 20).join('\n  ')}`);
+    // A coverage floor, not just a non-empty check.
+    //
+    // Publishing 1 of 250 signals is not a degraded success: signals_all is
+    // overwritten wholesale, so the Signals tab shows one coin, and recordCalls
+    // records the scorecard's calls for only the coins that happened to fetch —
+    // a biased subsample feeding a published hit rate. Quota exhaustion mid-loop
+    // produces exactly this.
+    const MIN_SIGNAL_COVERAGE = 0.8;
+    if (coins.length < universe.length * MIN_SIGNAL_COVERAGE) {
+      throw new Error(
+        `only ${coins.length} of ${universe.length} coins produced a signal. ` +
+          'Refusing to publish a decimated set — it would overwrite the full ' +
+          'one and bias the scorecard toward whichever coins happened to ' +
+          `fetch.\n  ${failed.slice(0, 10).join('\n  ')}`,
+      );
     }
     if (failed.length) {
       console.warn(`skipped ${failed.length} coin(s):\n  ${failed.slice(0, 20).join('\n  ')}`);

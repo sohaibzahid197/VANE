@@ -109,7 +109,17 @@ export async function notifyFlips(
 
   // Record the new state FIRST. If sending throws halfway, the next run must
   // not re-diff against a stale snapshot and notify the same flip twice.
-  await lastRef.set(directions);
+  //
+  // MERGE, not overwrite. A plain set() replaces the whole baseline with
+  // whatever this run happened to see — so a run that published 40 of 250 coins
+  // (a truncated fetch, a quota exhaustion) discards the other 210 directions
+  // permanently. Next run those coins have no previous state, `flips` correctly
+  // refuses to call an unknown coin a flip, and their real direction changes are
+  // swallowed silently. Merging degrades instead: a coin not seen this run keeps
+  // its last known direction until it is seen again.
+  if (Object.keys(directions).length > 0) {
+    await lastRef.set(directions, { merge: true });
+  }
 
   out.flipped = flips(previous, coins);
   if (out.flipped.length === 0) return out;

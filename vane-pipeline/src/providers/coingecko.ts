@@ -89,9 +89,19 @@ export class CoinGecko implements MarketProvider {
     this.tier = opts.tier ?? 'demo';
     this.base = this.tier === 'pro' ? PRO_BASE : DEMO_BASE;
     this.minGapMs = Math.ceil(60_000 / RPM[this.tier]);
-    this.maxHistoryDays = Number(
-      process.env.MAX_HISTORY_DAYS ?? MAX_HISTORY_DAYS[this.tier],
-    );
+    // Validated, because an unparseable override became NaN and was sent as
+    // `days=NaN`. The 10012 retry is gated on `asked > 365`, which is false for
+    // NaN, so it never fired either — a typo produced a request that could not
+    // succeed and could not recover.
+    const rawMax = process.env.MAX_HISTORY_DAYS;
+    const parsedMax = rawMax === undefined ? MAX_HISTORY_DAYS[this.tier] : Number(rawMax);
+    if (!Number.isFinite(parsedMax) || parsedMax <= 0) {
+      throw new Error(
+        `MAX_HISTORY_DAYS must be a positive number of days, got "${rawMax}". ` +
+          'Use a day count (365, 730); "max" is not accepted here.',
+      );
+    }
+    this.maxHistoryDays = Math.floor(parsedMax);
     this.doFetch = opts.fetchImpl ?? fetch;
   }
 
@@ -273,8 +283,28 @@ export class CoinGecko implements MarketProvider {
         );
       }
 
-      if (/10002|API Key Missing|coingecko 401/i.test(msg)) throw e;
+      // The guard has to be the WIDE one and the fallback the NARROW one. It
+      // was the other way round: auth matched only 401/10002 while the fallback
+      // triggered on any 4xx, so two cases leaked straight past it into an
+      // unauthenticated public-tier request —
+      //
+      //   403 / error_code 10011 — how CoinGecko reports a revoked, wrong-host
+      //     or over-quota key. The single most likely way a key stops working.
+      //   429 after retry exhaustion — the thrown message is
+      //     "coingecko 429 after 4 attempts", which /coingecko 4\d\d/ matches.
+      //     Rate limiting was being misread as a rejected interval, and the
+      //     retry (issued after the throttle gap, often in a fresh minute) could
+      //     then SUCCEED — putting automatic-granularity bars for one coin into
+      //     a document where every other coin is hourly. Mixed resolution in one
+      //     chart set, no error anywhere.
+      //
+      // Both produce the outcome this whole migration exists to prevent: a
+      // pipeline that looks healthy while running with no commercial licence.
+      if (/10002|10010|10011|API Key Missing|not authorized|coingecko 40[13]|coingecko 429/i.test(msg)) {
+        throw e;
+      }
 
+      // Only a genuine "this plan does not offer that granularity" falls back.
       const rejectedInterval = interval && /coingecko 4\d\d/.test(msg);
       if (!rejectedInterval) throw e;
 

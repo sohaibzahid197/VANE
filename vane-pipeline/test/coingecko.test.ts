@@ -300,3 +300,97 @@ test('global tolerates a payload with no data block', async () => {
   const cg = new CoinGecko({ apiKey: KEY, fetchImpl: impl });
   assert.equal(await cg.global(), null);
 });
+
+// --- the auth guard must be wider than the fallback -------------------------
+//
+// The fallback exists for "this plan has no such granularity". It must NEVER
+// absorb an authentication or rate-limit failure, because doing so produces a
+// pipeline that looks healthy while running unauthenticated on the public tier
+// — with no commercial licence, which is the exact failure the migration to a
+// licensed provider exists to prevent.
+
+/** Fails the interval request with `status`, succeeds without an interval. */
+function intervalFails(status: number, body: unknown) {
+  let fallbackCalls = 0;
+  const impl = (async (input: any) => {
+    const url = new URL(String(input));
+    if (url.searchParams.has('interval')) {
+      return {
+        ok: false,
+        status,
+        headers: new Headers(),
+        text: async () => JSON.stringify(body),
+        json: async () => body,
+      } as any;
+    }
+    fallbackCalls += 1;
+    return {
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => ({ prices: [[1000, 10]], total_volumes: [[1000, 1]] }),
+      text: async () => '',
+    } as any;
+  }) as unknown as typeof fetch;
+  return { impl, calls: () => fallbackCalls };
+}
+
+test('a 403 revoked key THROWS instead of falling back unauthenticated', async () => {
+  // 10011 is how CoinGecko reports a revoked/wrong-host key — the likeliest way
+  // a key stops working, and it used to take the fallback silently.
+  const { impl, calls } = intervalFails(403, {
+    status: { error_code: 10011, error_message: 'This request is not authorized with your key' },
+  });
+  const cg = new CoinGecko({ apiKey: KEY, fetchImpl: impl });
+  await assert.rejects(() => cg.candles('bitcoin', 7, 'hourly'));
+  assert.equal(calls(), 0, 'must NOT have issued an unauthenticated request');
+});
+
+test('exhausted rate limiting THROWS instead of degrading resolution', async () => {
+  // The thrown message is "coingecko 429 after N attempts", which the old
+  // /coingecko 4\d\d/ fallback matched — so a throttled coin silently came back
+  // at automatic granularity inside an otherwise-hourly document.
+  const impl = (async (input: any) => {
+    const url = new URL(String(input));
+    if (url.searchParams.has('interval')) {
+      return {
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'retry-after': '0' }),
+        text: async () => 'rate limited',
+        json: async () => ({}),
+      } as any;
+    }
+    return {
+      ok: true, status: 200, headers: new Headers(),
+      json: async () => ({ prices: [[1000, 10]], total_volumes: [] }),
+      text: async () => '',
+    } as any;
+  }) as unknown as typeof fetch;
+
+  const cg = new CoinGecko({ apiKey: KEY, fetchImpl: impl });
+  await assert.rejects(() => cg.candles('bitcoin', 7, 'hourly'), /429/);
+});
+
+test('a genuine plan limitation still falls back to coarser bars', async () => {
+  // 10005 is "this endpoint requires a higher plan" — the one case the fallback
+  // is for. Degrading beats losing the coin.
+  const { impl, calls } = intervalFails(400, {
+    status: { error_code: 10005, error_message: 'exclusive to paid plan subscribers' },
+  });
+  const cg = new CoinGecko({ apiKey: KEY, fetchImpl: impl });
+  const out = await cg.candles('bitcoin', 7, 'hourly');
+  assert.equal(out.length, 1, 'should have returned the fallback series');
+  assert.equal(calls(), 1);
+});
+
+test('an unparseable MAX_HISTORY_DAYS fails loudly rather than sending days=NaN', () => {
+  const prev = process.env.MAX_HISTORY_DAYS;
+  process.env.MAX_HISTORY_DAYS = 'max';
+  try {
+    assert.throws(() => new CoinGecko({ apiKey: KEY }), /positive number of days/);
+  } finally {
+    if (prev === undefined) delete process.env.MAX_HISTORY_DAYS;
+    else process.env.MAX_HISTORY_DAYS = prev;
+  }
+});

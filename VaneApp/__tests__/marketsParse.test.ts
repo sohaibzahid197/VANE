@@ -217,3 +217,39 @@ describe('toSeries alignment guard', () => {
     expect(toSeries(good)).not.toBeNull();
   });
 });
+
+describe('money formatting across token magnitudes', () => {
+  const { money } = require('../src/format.ts');
+
+  it('never collapses a sub-cent price to zero', () => {
+    // The whole point: a memecoin must not render as "$0.0000" in the list
+    // while the chart crosshair on the same screen shows its real price.
+    expect(money(0.00002347)).not.toBe('$0.0000');
+    expect(money(0.00002347)).not.toBe('$0.00');
+    expect(money(0.0000094)).not.toBe('$0.0000');
+    // Three significant figures, so the price is actually readable.
+    expect(money(0.00002347)).toBe('$0.0000235');
+    expect(money(0.0000094)).toBe('$0.00000940');
+  });
+
+  it('keeps conventional formatting above a cent', () => {
+    expect(money(84560)).toBe('$84,560');
+    expect(money(2692.15)).toBe('$2,692');
+    expect(money(214.6)).toBe('$214.60');
+    expect(money(0.2843)).toBe('$0.2843');
+  });
+
+  it('puts the sign outside the currency mark', () => {
+    expect(money(-3)).toBe('-$3.00');
+    expect(money(-0.00001)).toMatch(/^-\$/);
+  });
+
+  it('renders exact zero plainly', () => {
+    expect(money(0)).toBe('$0');
+  });
+
+  it('returns an em dash for non-finite input', () => {
+    expect(money(Number.NaN)).toBe('—');
+    expect(money(Infinity)).toBe('—');
+  });
+});

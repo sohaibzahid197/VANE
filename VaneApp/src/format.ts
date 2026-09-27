@@ -15,9 +15,27 @@
  */
 export function money(n: number): string {
   if (!Number.isFinite(n)) return '—';
-  if (n >= 1000) return `$${Math.round(n).toLocaleString('en-US')}`;
-  if (n >= 1) return `$${n.toFixed(2)}`;
-  return `$${n.toFixed(4)}`;
+
+  // Sign handled up front so a negative change never renders as "$-3.0000".
+  const neg = n < 0;
+  const v = Math.abs(n);
+  const sign = neg ? '-' : '';
+
+  if (v >= 1000) return `${sign}$${Math.round(v).toLocaleString('en-US')}`;
+  if (v >= 1) return `${sign}$${v.toFixed(2)}`;
+  if (v >= 0.01) return `${sign}$${v.toFixed(4)}`;
+  if (v === 0) return '$0';
+
+  // BELOW A CENT, FIXED DECIMALS LIE.
+  //
+  // `toFixed(4)` renders a $0.00002347 memecoin as "$0.0000" — the price
+  // disappears entirely, on exactly the assets people open most impulsively.
+  // Chart.tsx's own fmt() already carried a comment explaining why this must not
+  // happen, and then this function did it anyway one digit further out, so the
+  // Markets row and the crosshair on the same screen showed different prices for
+  // the same coin. Significant figures, not decimal places, is the only rule
+  // that works across eight orders of magnitude of token price.
+  return `${sign}$${v.toPrecision(3)}`;
 }
 
 export const signed = (n: number) =>
