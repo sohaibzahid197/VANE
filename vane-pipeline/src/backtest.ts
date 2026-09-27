@@ -21,6 +21,7 @@
 // until a horizon clears MIN_EDGE on this data, which is what stops a changed
 // feature quietly switching on a published confidence percentage.
 
+import './env.ts';
 import type { Candle } from './providers/types.ts';
 import { coinGeckoFromEnv } from './providers/coingecko.ts';
 import { UNIVERSE_SIZE, fetchUniverse } from './coins.ts';

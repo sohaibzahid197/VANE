@@ -19,6 +19,7 @@
 //   2. Are the field names what we parse? A renamed or missing field publishes
 //      as null and renders as an em dash — no error anywhere.
 
+import './env.ts';
 import { coinGeckoFromEnv } from './providers/coingecko.ts';
 import { cutRanges } from './history.ts';
 import { buildCoin } from './publish.ts';

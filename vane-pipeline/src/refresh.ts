@@ -35,6 +35,7 @@
 // timing error on the one number this product asks to be trusted on. The whole
 // reason vane-cron exists was to stop dropped runs corrupting exactly that.
 
+import './env.ts';
 import { HORIZONS_ALL, buildCoin } from './publish.ts';
 import {
   UNIVERSE_SIZE,
