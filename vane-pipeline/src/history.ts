@@ -178,29 +178,82 @@ export async function buildHistory(
  * rules change to ship a feature is a rules change that can regress a paywall
  * verified by direct attack, and this feature does not need one.
  *
- * Batched in chunks of 400 — Firestore's limit is 500 writes per batch, and
- * leaving headroom means a later addition to this loop does not silently start
- * throwing at the boundary.
+ * CHUNKED BY PAYLOAD SIZE, NOT DOCUMENT COUNT, and that distinction is the whole
+ * reason this function looks like this. Firestore's batch limit is 500 writes, so
+ * batching 400 at a time looks obviously safe — and it is, for the small
+ * documents the rest of the pipeline writes. A history document is ~65KB, so 50
+ * of them is a ~3.2MB single commit, which died with
+ * `DEADLINE_EXCEEDED after 60.002s` on the first real run and published nothing
+ * at all after spending 100 provider credits fetching the data.
+ *
+ * So batches are capped by estimated bytes, each commit is independent, and a
+ * failed chunk does not discard the ones that already landed. Partial history is
+ * a partial product; no history is a broken one.
  */
+const MAX_BATCH_BYTES = 800_000;
+/** Firestore's own ceiling, never the binding constraint for these documents. */
+const MAX_BATCH_DOCS = 400;
+
 export async function publishHistory(
   db: Firestore,
   docs: HistoryDoc[],
-): Promise<{ free: number; paid: number }> {
+): Promise<{ free: number; paid: number; failed: number }> {
   let free = 0;
   let paid = 0;
+  let failed = 0;
 
-  for (let i = 0; i < docs.length; i += 400) {
+  let chunk: HistoryDoc[] = [];
+  let bytes = 0;
+
+  const flush = async () => {
+    if (chunk.length === 0) return;
     const batch = db.batch();
-    for (const doc of docs.slice(i, i + 400)) {
-      const where = isFree(doc.sym) ? 'public' : 'private';
-      batch.set(db.doc(`${where}/hist_${doc.sym}`), doc);
-      if (where === 'public') free += 1;
-      else paid += 1;
+    for (const doc of chunk) {
+      batch.set(db.doc(`${isFree(doc.sym) ? 'public' : 'private'}/hist_${doc.sym}`), doc);
     }
-    await batch.commit();
-  }
+    try {
+      await batch.commit();
+      for (const doc of chunk) {
+        if (isFree(doc.sym)) free += 1;
+        else paid += 1;
+      }
+    } catch (e) {
+      // Name the coins that did not land. "history rebuild failed" with no
+      // symbols leaves no way to tell which charts are now stale.
+      failed += chunk.length;
+      console.warn(
+        `history batch of ${chunk.length} failed (${chunk.map((d) => d.sym).join(',')}): ` +
+          `${(e as Error).message.slice(0, 120)}`,
+      );
+    }
+    chunk = [];
+    bytes = 0;
+  };
 
-  return { free, paid };
+  for (const doc of docs) {
+    // JSON length is a close enough proxy for the Firestore payload, and it is
+    // far cheaper than serialising twice to find out exactly.
+    const size = estimateBytes(doc);
+    if (chunk.length > 0 && (bytes + size > MAX_BATCH_BYTES || chunk.length >= MAX_BATCH_DOCS)) {
+      await flush();
+    }
+    chunk.push(doc);
+    bytes += size;
+  }
+  await flush();
+
+  return { free, paid, failed };
+}
+
+function estimateBytes(doc: HistoryDoc): number {
+  let n = 200; // document overhead and the scalar fields
+  for (const series of Object.values(doc.ranges)) {
+    if (!series) continue;
+    // Six parallel arrays; roughly 12 bytes per number once encoded.
+    n += (series.t.length + series.o.length + series.h.length +
+          series.l.length + series.c.length + series.v.length) * 12;
+  }
+  return n;
 }
 
 /**

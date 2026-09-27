@@ -137,3 +137,94 @@ test('ALL survives when there is genuinely more history than a year', () => {
   const span = (s: { t: number[] }) => s.t[s.t.length - 1]! - s.t[0]!;
   assert.ok(span(out.ALL!) > span(out['1Y']!) * 1.05, 'ALL should cover more than 1Y');
 });
+
+// --- write batching --------------------------------------------------------
+//
+// The first real run of the history rebuild died with DEADLINE_EXCEEDED after
+// 60s and published NOTHING, having already spent 100 provider credits fetching
+// the data. The cause was batching by document count: 400 is far inside
+// Firestore's 500-write limit, but 50 history documents at ~65KB each is a
+// ~3.2MB single commit. These tests pin the two properties that prevent it.
+
+test('a large set is split into several batches rather than one giant commit', async () => {
+  const { publishHistory } = await import('../src/history.ts');
+
+  const commits: string[][] = [];
+  const fakeDb = {
+    doc: (path: string) => ({ path }),
+    batch: () => {
+      const written: string[] = [];
+      return {
+        set: (ref: { path: string }) => written.push(ref.path),
+        commit: async () => {
+          commits.push(written);
+        },
+      };
+    },
+  } as never;
+
+  // 50 coins, each carrying six ranges of realistic length.
+  const docs = Array.from({ length: 50 }, (_, i) => ({
+    sym: `C${i}`,
+    name: `Coin ${i}`,
+    updatedAt: new Date().toISOString(),
+    source: 'coingecko',
+    resolution: 'resampled-from-close' as const,
+    ranges: {
+      '24H': seriesOf(96),
+      '7D': seriesOf(168),
+      '30D': seriesOf(180),
+      '90D': seriesOf(90),
+      '1Y': seriesOf(365),
+    },
+  }));
+
+  const out = await publishHistory(fakeDb, docs);
+
+  assert.ok(commits.length > 1, `expected several batches, got ${commits.length}`);
+  assert.equal(out.free + out.paid, 50, 'every document should have been written');
+  assert.equal(out.failed, 0);
+  for (const c of commits) {
+    assert.ok(c.length < 50, `a batch held ${c.length} documents — too many for their size`);
+  }
+});
+
+test('one failing batch does not discard the batches that succeeded', async () => {
+  const { publishHistory } = await import('../src/history.ts');
+
+  let n = 0;
+  const fakeDb = {
+    doc: (path: string) => ({ path }),
+    batch: () => {
+      n += 1;
+      const mine = n;
+      return {
+        set: () => {},
+        commit: async () => {
+          // Fail only the second commit, as a deadline would.
+          if (mine === 2) throw new Error('DEADLINE_EXCEEDED: Deadline exceeded after 60.002s');
+        },
+      };
+    },
+  } as never;
+
+  const docs = Array.from({ length: 50 }, (_, i) => ({
+    sym: `C${i}`,
+    name: `Coin ${i}`,
+    updatedAt: new Date().toISOString(),
+    source: 'coingecko',
+    resolution: 'resampled-from-close' as const,
+    ranges: { '1Y': seriesOf(365), '30D': seriesOf(180) },
+  }));
+
+  const out = await publishHistory(fakeDb, docs);
+
+  assert.ok(out.failed > 0, 'the failed batch should be counted');
+  assert.ok(out.free + out.paid > 0, 'successful batches must still be reported as written');
+  assert.equal(out.free + out.paid + out.failed, 50, 'every document accounted for');
+});
+
+function seriesOf(n: number) {
+  const a = Array.from({ length: n }, (_, i) => i);
+  return { t: a, o: a, h: a, l: a, c: a, v: a };
+}

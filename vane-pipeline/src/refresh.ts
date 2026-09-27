@@ -216,11 +216,22 @@ async function main() {
         }
       }
 
-      const counts = docs.length ? await publishHistory(db, docs) : { free: 0, paid: 0 };
-      health.history = { ok: true, built: docs.length, failed: failed.length, ...counts };
+      const counts = docs.length
+        ? await publishHistory(db, docs)
+        : { free: 0, paid: 0, failed: 0 };
+      health.history = {
+        // Not ok when documents were fetched but could not be written — that is
+        // credits spent for nothing, and it must not read as a clean run.
+        ok: counts.failed === 0,
+        built: docs.length,
+        fetchFailed: failed.length,
+        ...counts,
+      };
       console.log(
-        `history: published ${docs.length} (${counts.free} free, ${counts.paid} paid)` +
-          (failed.length ? `, ${failed.length} failed` : ''),
+        `history: published ${counts.free + counts.paid} of ${docs.length} ` +
+          `(${counts.free} free, ${counts.paid} paid)` +
+          (counts.failed ? `, ${counts.failed} FAILED TO WRITE` : '') +
+          (failed.length ? `, ${failed.length} failed to fetch` : ''),
       );
       if (failed.length) console.warn(`  ${failed.slice(0, 10).join('\n  ')}`);
     } catch (e) {
