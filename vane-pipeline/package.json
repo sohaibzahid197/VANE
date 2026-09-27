@@ -6,6 +6,7 @@
   "scripts": {
     "backtest": "node --experimental-strip-types src/backtest.ts",
     "probe": "node --experimental-strip-types src/probe.ts",
+    "purge": "node --experimental-strip-types src/purge.ts",
     "refresh": "node --experimental-strip-types src/refresh.ts",
     "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
     "typecheck": "tsc --noEmit"

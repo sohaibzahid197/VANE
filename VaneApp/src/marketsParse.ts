@@ -107,24 +107,37 @@ export function toGlobal(g: any): GlobalMarket {
  * outright: a missing chart is recoverable, a wrong one is not.
  */
 export function toSeries(s: any): Series | null {
-  const pick = (k: string): number[] =>
-    Array.isArray(s?.[k])
-      ? s[k].filter((n: unknown): n is number => typeof n === 'number' && Number.isFinite(n))
-      : [];
+  // REJECT on a non-finite entry; do not filter it out.
+  //
+  // Filtering first and comparing lengths afterwards is the obvious way to write
+  // this and it is wrong: a hole in one array and a compensating extra element
+  // cancel each other out, the length check passes, and every bar after the hole
+  // is drawn against the next bar's open. That is exactly the silent
+  // misalignment this function exists to prevent, so the guard has to run before
+  // anything is discarded.
+  const pick = (k: string): number[] | null => {
+    const raw = s?.[k];
+    if (!Array.isArray(raw)) return null;
+    for (const n of raw) {
+      if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+    }
+    return raw as number[];
+  };
 
   const t = pick('t');
   const c = pick('c');
-  if (t.length === 0 || c.length !== t.length) return null;
+  if (!t || !c || t.length === 0 || c.length !== t.length) return null;
 
   const o = pick('o');
   const h = pick('h');
   const l = pick('l');
   const v = pick('v');
+  if (!o || !h || !l) return null;
   if (o.length !== t.length || h.length !== t.length || l.length !== t.length) return null;
 
   // Volume may be absent — the chart can drop the volume pane — but a PARTIAL
   // volume array would misalign the bars it does draw, so it is all or nothing.
-  return { t, o, h, l, c, v: v.length === t.length ? v : [] };
+  return { t, o, h, l, c, v: v && v.length === t.length ? v : [] };
 }
 
 export function toHistory(raw: any, fallbackSym: string): History {

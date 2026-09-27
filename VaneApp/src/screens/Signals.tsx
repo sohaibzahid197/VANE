@@ -202,6 +202,19 @@ export default function Signals({
         />
       ))}
 
+      {/*
+        Attribution is a licence term, not a courtesy: CoinGecko's API Terms
+        require "Powered by CoinGecko" displayed prominently at font size >= 10,
+        on EVERY tier including paid. Prices and the sparkline on this screen are
+        CoinGecko-derived, so it belongs here — this is the app's home screen and
+        its most-viewed CoinGecko surface.
+
+        allowFontScaling={false} because ui.tsx caps scaling upward only, and a
+        device set to a smaller text size would otherwise render this below 10pt.
+      */}
+      <Text allowFontScaling={false} style={st.attribution}>
+        Powered by CoinGecko
+      </Text>
       <Disclaimer />
     </Screen>
   );
@@ -210,6 +223,14 @@ export default function Signals({
 function useStyles() {
   const { w, h, f } = useScale();
   return useMemo(() => StyleSheet.create({
+        // 10 is a licence floor, not a design choice. CoinGecko's API Terms
+        // require the attribution at font size >= 10 on every tier.
+        attribution: {
+          color: C.faint,
+          fontSize: Math.max(10, f(10)),
+          textAlign: 'center',
+          marginTop: h(10),
+        },
   head: {
     flexDirection: 'row', justifyContent: 'space-between',
     alignItems: 'flex-start', marginTop: h(6), marginBottom: h(16),

@@ -19,7 +19,17 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { C, tint } from '../theme.ts';
 import { useScale } from '../responsive.ts';
-import { BackHeader, Card, Disclaimer, ErrorState, Label, Loading, Screen, Text } from '../ui.tsx';
+import {
+  BackHeader,
+  Card,
+  Disclaimer,
+  ErrorState,
+  Label,
+  Loading,
+  MIN_TAP,
+  Screen,
+  Text,
+} from '../ui.tsx';
 import { Chart } from '../Chart.tsx';
 import {
   RANGES,
@@ -158,16 +168,23 @@ export default function CoinChart({
         ) : !series ? (
           <Card>
             <Label>No chart yet</Label>
+            {/*
+              No paywall copy here, deliberately.
+
+              A non-subscriber's list comes from `public/markets_latest`, which
+              carries only the free coins — so this screen is reachable without a
+              subscription ONLY for coins whose history is itself free and
+              world-readable. Saying "this is part of Pro" was therefore wrong
+              every single time it appeared: it offered to sell a feature the
+              reader already had, which is worse than saying nothing.
+
+              If history is missing here, the pipeline has not published it yet.
+              That is the same sentence for everyone.
+            */}
             <Text style={st.muted}>
-              {isPro
-                ? 'The pipeline has not published history for this coin yet.'
-                : 'Chart history for this coin is part of Pro.'}
+              History for {market.sym} has not been published yet. It is rebuilt
+              daily — check back shortly.
             </Text>
-            {!isPro && (
-              <Pressable onPress={onPaywall} accessibilityRole="button" style={st.unlock}>
-                <Text style={st.unlockText}>Unlock charts</Text>
-              </Pressable>
-            )}
           </Card>
         ) : (
           <Card>
@@ -225,7 +242,12 @@ export default function CoinChart({
           cheaper than having someone discover it by comparing against an
           exchange.
         */}
-        <Text style={st.attribution}>Powered by CoinGecko</Text>
+        {/* allowFontScaling={false}: the 10pt stylesheet floor is not a floor while
+            the OS can scale DOWN (Android "Small" 0.85, iOS smallest ~0.82), and
+            CoinGecko's Terms require >= 10 on every tier. */}
+        <Text allowFontScaling={false} style={st.attribution}>
+          Powered by CoinGecko
+        </Text>
         {history ? (
           <Text style={st.resolution}>
             Bars aggregated from closing prices, not exchange open/high/low.
@@ -269,8 +291,11 @@ function useStyles() {
         rangeBarInner: { gap: w(6) },
         rangeTab: {
           paddingHorizontal: w(12),
-          // 36 keeps the tab tappable without crowding seven of them on a phone.
-          height: h(36),
+          // MIN_TAP (48) from ui.tsx: Apple asks 44x44pt, Android 48x48dp. This
+          // was 36, under both, for six targets sitting in a row — the easiest
+          // kind of control to miss. The visual chip stays compact because the
+          // extra height is padding around centred text, not a bigger box.
+          height: Math.max(MIN_TAP, h(40)),
           justifyContent: 'center',
           borderRadius: w(8),
           borderWidth: 1,

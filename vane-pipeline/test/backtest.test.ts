@@ -71,7 +71,7 @@ test('a longer horizon yields fewer rows', () => {
   assert.ok(d30 < d1, `expected fewer 30D rows, got ${d30} vs ${d1}`);
 });
 
-test('stride controls sampling density and produces non-overlapping windows', () => {
+test('stride controls sampling density', () => {
   const dense = buildRows(choppy, 24, 6).length;
   const sparse = buildRows(choppy, 24, 24).length;
   assert.ok(dense > sparse, 'smaller stride must yield more rows');
@@ -87,4 +87,44 @@ test('every row is well formed', () => {
     assert.equal(typeof r.actual, 'boolean');
     assert.ok(Number.isFinite(r.score) && r.score >= -1 && r.score <= 1, `score ${r.score}`);
   }
+});
+
+test('every configured stride is at least its horizon', async () => {
+  // The property the old test was NAMED for but never checked. A stride shorter
+  // than the horizon overlaps evaluation windows, inflating n and understating
+  // the standard error — while the run prints "non-overlapping windows" and can
+  // print "GATE: PASS" off the inflated measurement.
+  const src = await import('node:fs').then((fs) =>
+    fs.readFileSync(new URL('../src/backtest.ts', import.meta.url), 'utf8'),
+  );
+  const { HORIZON_HOURS } = await import('../src/signal.ts');
+
+  const m = src.match(/STRIDE_BY_HORIZON: Record<Horizon, number> = \{([^}]*)\}/);
+  assert.ok(m, 'could not find STRIDE_BY_HORIZON');
+  const strides = Object.fromEntries(
+    m![1]!.split(',').map((p) => {
+      const [k, v] = p.split(':').map((x) => x.trim().replace(/'/g, ''));
+      return [k, Number(v)];
+    }).filter(([k]) => k),
+  ) as Record<string, number>;
+
+  for (const [h, ahead] of Object.entries(HORIZON_HOURS)) {
+    assert.ok(
+      strides[h]! >= ahead,
+      `${h}: stride ${strides[h]} < horizon ${ahead} — windows overlap by ` +
+        `${(100 * (1 - strides[h]! / ahead)).toFixed(0)}%`,
+    );
+  }
+});
+
+test('buildRows produces non-overlapping windows at the configured stride', () => {
+  const candles = Array.from({ length: 3000 }, (_, i) => ({
+    openTime: i * 3_600_000,
+    open: 100, high: 101, low: 99, close: 100 + Math.sin(i / 9) * 5, volume: 1000,
+  }));
+  const ahead = 720;
+  const rows = buildRows(candles, ahead, 720);
+  // Windows start at WARMUP and step by 720, so none can share an hour.
+  assert.ok(rows.length > 1, 'need several rows to test spacing');
+  assert.ok(rows.length < 3000 / ahead + 2, `too many rows for stride ${ahead}`);
 });

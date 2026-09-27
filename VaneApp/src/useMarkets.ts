@@ -49,6 +49,9 @@ export function useMarkets(entitled: boolean): MarketsState {
   const [stale, setStale] = useState(false);
   const [fetchedAt, setFetchedAt] = useState(0);
   const [tick, setTick] = useState(0);
+  // Which tier the data currently in state belongs to. Compared against
+  // `entitled` to detect that the snapshot on screen is now the wrong one.
+  const [dataTier, setDataTier] = useState<boolean | null>(null);
 
   const reload = useCallback(() => setTick((t) => t + 1), []);
 
@@ -56,6 +59,24 @@ export function useMarkets(entitled: boolean): MarketsState {
     let cancelled = false;
 
     (async () => {
+      // An entitlement change must bypass the freshness gate.
+      //
+      // Without this, a subscriber whose subscription was just refunded keeps
+      // all 250 coins on screen: the effect re-runs with entitled=false, the
+      // free cache is empty so nothing replaces the data, and then the 60-second
+      // freshness check early-returns because `fetchedAt` is seconds old. The
+      // thing that forced the reload — entitlement changing — is exactly what
+      // the cached snapshot got wrong, so it cannot satisfy it.
+      const tierChanged = dataTier !== null && dataTier !== entitled;
+      if (tierChanged) {
+        // Drop the wrong-tier snapshot from memory immediately rather than
+        // leaving it on screen until the network answers — or forever, offline.
+        setData(null);
+        setStale(false);
+        setLoading(true);
+        if (!entitled) void clearMarketsCache();
+      }
+
       // Serve the cache for the tier we are ASKING for, so a paying user does
       // not flash three coins before the paid document lands.
       try {
@@ -66,13 +87,14 @@ export function useMarkets(entitled: boolean): MarketsState {
             setData(cached);
             setStale(true);
             setLoading(false);
+            setDataTier(cached.paid);
           }
         }
       } catch {
         // A corrupt cache is not an error worth surfacing; the fetch follows.
       }
 
-      if (Date.now() - fetchedAt < FRESH_MS && data) {
+      if (!tierChanged && Date.now() - fetchedAt < FRESH_MS && data) {
         setLoading(false);
         return;
       }
@@ -84,6 +106,7 @@ export function useMarkets(entitled: boolean): MarketsState {
         setStale(false);
         setError(null);
         setFetchedAt(Date.now());
+        setDataTier(snap.paid);
         // Keyed on what SERVED it, not what was asked for.
         await AsyncStorage.setItem(cacheKey(snap.paid), JSON.stringify(snap)).catch(() => {});
       } catch (e: any) {

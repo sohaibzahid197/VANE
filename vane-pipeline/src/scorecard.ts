@@ -149,6 +149,37 @@ export async function recordCalls(
  *  derived scorecard, never the counters. */
 const TOTALS = 'ops/scorecard_totals';
 
+/**
+ * Which model the running totals belong to.
+ *
+ * The totals are a bare cumulative counter keyed by horizon, so grades from
+ * different models fold into the same two integers and can never be separated
+ * again. That was fine while there was one model. It stopped being fine at the
+ * CoinGecko migration: `signal.ts` feeds volume through zscore(), and CoinGecko
+ * publishes a ROLLING 24-HOUR volume where Binance published per-candle volume.
+ * The feature now measures something else, so the calls either side of the
+ * migration come from two different models.
+ *
+ * Left alone, the first percentage VANE ever published would have been computed
+ * at the moment the counter crossed MIN_GRADED — roughly half pre-migration and
+ * half post — with nothing on screen saying so. The cross-check in the app
+ * (recomputing correct/graded and refusing a rate that disagrees) would have
+ * passed, because the arithmetic is internally consistent. Consistency is not
+ * the property at issue; provenance is.
+ *
+ * Bumping this starts a fresh count. The old numbers stay in the document under
+ * their old keys, readable, but are no longer published or added to. The cost is
+ * that the record resets to 0 and the app shows "not enough data yet" until 200
+ * new calls are graded. That is the honest state, and a product whose entire
+ * claim is measurability should prefer it to a number it cannot explain.
+ *
+ * Bump this on ANY change that alters what the model sees or how it scores.
+ */
+export const MODEL_EPOCH = 'cg-1';
+
+/** Totals are keyed by epoch AND horizon so two models never share a counter. */
+const key = (horizon: string) => `${MODEL_EPOCH}:${horizon}`;
+
 type Totals = Record<string, { graded: number; correct: number }>;
 
 /** Grade every recorded call whose horizon has elapsed. */
@@ -236,8 +267,9 @@ async function addToTotals(db: Firestore, delta: Totals): Promise<void> {
     const current = (snap.exists ? snap.data() : {}) as Totals;
     const next: Totals = { ...current };
     for (const [hz, d] of Object.entries(delta)) {
-      const c = next[hz] ?? { graded: 0, correct: 0 };
-      next[hz] = { graded: c.graded + d.graded, correct: c.correct + d.correct };
+      const k = key(hz);
+      const c = next[k] ?? { graded: 0, correct: 0 };
+      next[k] = { graded: c.graded + d.graded, correct: c.correct + d.correct };
     }
     tx.set(ref, next);
   });
@@ -257,7 +289,9 @@ export async function scorecard(db: Firestore): Promise<ScoreRow[]> {
   const totals = (snap.exists ? snap.data() : {}) as Totals;
 
   return (['24H', '7D', '30D'] as Horizon[]).map((hz) => {
-    const t = totals[hz] ?? { graded: 0, correct: 0 };
+    // Read the CURRENT epoch only. Pre-migration counts remain in the document
+    // under their bare horizon keys for reference, and are never published.
+    const t = totals[key(hz)] ?? { graded: 0, correct: 0 };
     return {
       horizon: hz,
       graded: t.graded,

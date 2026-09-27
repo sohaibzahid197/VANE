@@ -77,7 +77,18 @@ async function fetchDoc(
           signal: ctl.signal,
           headers: { ...headers, Authorization: `Bearer ${token}` },
         });
-        if (res.status === 401 || res.status === 403) res = null;
+        // 401/403 — the server disagrees that we are entitled. Expected for a
+        // lapsed subscription, not an error.
+        //
+        // 404 — the paid document does not exist. ALSO a fallback, and leaving
+        // it out was a real bug: free coins were published only to `public/`,
+        // so an entitled reader asking for `private/hist_BTC` got a 404 and the
+        // request ended there. Every paying user saw "No chart yet" on the three
+        // most-opened coins, while non-paying users saw the charts fine. The
+        // publisher now writes free coins to both sides, and this is the second
+        // lock — a missing paid document should always degrade to the free one
+        // rather than to nothing.
+        if (res.status === 401 || res.status === 403 || res.status === 404) res = null;
         else servedPaid = true;
       }
     }

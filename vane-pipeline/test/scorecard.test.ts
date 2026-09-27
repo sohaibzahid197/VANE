@@ -219,3 +219,26 @@ test('ties and voids never reach the totals', async () => {
   assert.equal(day.graded, 0, 'a tie and a void are not results');
   assert.equal(day.correct, 0);
 });
+
+test('totals are keyed by model epoch, so two models never share a counter', async () => {
+  const { MODEL_EPOCH } = await import('../src/scorecard.ts');
+  assert.ok(MODEL_EPOCH, 'an epoch must be defined');
+
+  // A pre-migration document, counted under the bare horizon key.
+  const stored: Record<string, { graded: number; correct: number }> = {
+    '24H': { graded: 90, correct: 44 },
+  };
+  const db = {
+    doc: () => ({
+      get: async () => ({ exists: true, data: () => stored }),
+    }),
+  } as never;
+
+  const { scorecard } = await import('../src/scorecard.ts');
+  const rows = await scorecard(db);
+  const h24 = rows.find((r) => r.horizon === '24H')!;
+
+  assert.equal(h24.graded, 0, 'pre-epoch grades must NOT be published');
+  assert.equal(h24.correct, 0);
+  assert.equal(h24.hitRate, null, 'and no rate until the new epoch has a sample');
+});

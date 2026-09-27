@@ -228,3 +228,78 @@ function seriesOf(n: number) {
   const a = Array.from({ length: n }, (_, i) => i);
   return { t: a, o: a, h: a, l: a, c: a, v: a };
 }
+
+// --- the paywall split ------------------------------------------------------
+//
+// This is the single most security-critical line in the backend, and until now
+// nothing tested it: every fixture above uses symbols C0..C49, all of which are
+// paid, so the suite would pass unchanged if the free/paid ternary were
+// inverted and the entire dataset published world-readable.
+
+test('a paid coin is written ONLY to private/', async () => {
+  const { publishHistory } = await import('../src/history.ts');
+  const written: string[] = [];
+  const db = fakeDb(written);
+
+  await publishHistory(db, [histDoc('XRP')]);
+
+  assert.deepEqual(written, ['private/hist_XRP']);
+  assert.ok(
+    !written.some((p) => p.startsWith('public/')),
+    'a paid coin must never reach a world-readable document',
+  );
+});
+
+test('a free coin is written to BOTH sides', async () => {
+  // private/ is the complete dataset; public/ is the shop window cut from it.
+  // Publishing a free coin only to public/ left private/hist_BTC missing, and
+  // every PAYING user got a 404 and no chart on the three most-opened coins.
+  const { publishHistory } = await import('../src/history.ts');
+  const written: string[] = [];
+  const db = fakeDb(written);
+
+  await publishHistory(db, [histDoc('BTC')]);
+
+  assert.ok(written.includes('private/hist_BTC'), 'paying users read private/');
+  assert.ok(written.includes('public/hist_BTC'), 'free users read public/');
+  assert.equal(written.length, 2);
+});
+
+test('the free list is the one in publish.ts, not a second copy', async () => {
+  const { publishHistory } = await import('../src/history.ts');
+  const { FREE_SYMBOLS } = await import('../src/publish.ts');
+  const written: string[] = [];
+  const db = fakeDb(written);
+
+  await publishHistory(db, [...FREE_SYMBOLS, 'XRP', 'DOGE'].map(histDoc));
+
+  for (const sym of FREE_SYMBOLS) {
+    assert.ok(written.includes(`public/hist_${sym}`), `${sym} should be free`);
+  }
+  for (const sym of ['XRP', 'DOGE']) {
+    assert.ok(!written.includes(`public/hist_${sym}`), `${sym} must NOT be free`);
+    assert.ok(written.includes(`private/hist_${sym}`));
+  }
+});
+
+function fakeDb(written: string[]) {
+  return {
+    doc: (path: string) => ({ path }),
+    batch: () => ({
+      set: (ref: { path: string }) => written.push(ref.path),
+      commit: async () => {},
+    }),
+  } as never;
+}
+
+function histDoc(sym: string) {
+  const a = Array.from({ length: 10 }, (_, i) => i);
+  return {
+    sym,
+    name: sym,
+    updatedAt: new Date().toISOString(),
+    source: 'coingecko',
+    resolution: 'resampled-from-close' as const,
+    ranges: { '24H': { t: a, o: a, h: a, l: a, c: a, v: a } },
+  };
+}

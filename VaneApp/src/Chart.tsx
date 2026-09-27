@@ -39,10 +39,26 @@ export type ChartProps = {
   width: number;
   height: number;
   range: Range;
-  /** Line mode for 1H, where there are too few bars for candles to read well. */
+  /**
+   * Force a mode. Left undefined, the chart CHOOSES based on bar density.
+   *
+   * Candles need roughly 3pt per bar to read. A 365-bar year on a 320pt chart
+   * gives 0.88pt per bar, so a 1pt-minimum body plus a 1pt wick renders as a
+   * solid filled band between the high and low envelope — not a chart, just a
+   * coloured shape. Drawing a line there is not a downgrade; it is the only
+   * honest rendering of that many bars at that width.
+   */
   mode?: 'candles' | 'line';
   showVolume?: boolean;
 };
+
+/**
+ * Points per bar below which candle bodies stop being distinguishable.
+ *
+ * 2.4 rather than 2.0: the body is 68% of the slot, so at 2.4 the gap is ~0.77pt
+ * — right at the edge of surviving rasterization on a 2x screen.
+ */
+const MIN_SLOT_FOR_CANDLES = 2.4;
 
 type Geometry = {
   lo: number;
@@ -62,7 +78,7 @@ export function Chart({
   width,
   height,
   range,
-  mode = 'candles',
+  mode,
   showVolume = true,
 }: ChartProps) {
   const [cursor, setCursor] = useState<number | null>(null);
@@ -70,6 +86,9 @@ export function Chart({
 
   const n = series.c.length;
   const hasVolume = showVolume && series.v.length === n && series.v.some((v) => v > 0);
+  // Chosen from density unless the caller insisted.
+  const drawMode: 'candles' | 'line' =
+    mode ?? (n > 0 && width / n >= MIN_SLOT_FOR_CANDLES ? 'candles' : 'line');
 
   const geom = useMemo<Geometry | null>(() => {
     if (n === 0 || width <= 0 || height <= 0) return null;
@@ -127,17 +146,34 @@ export function Chart({
   /**
    * Crosshair dragging.
    *
-   * PanResponder rather than onTouch handlers because a horizontal drag inside
-   * a scrolling screen has to claim the gesture, or the parent ScrollView eats
-   * it and the crosshair only ever responds to taps.
+   * PanResponder rather than onTouch handlers because a horizontal drag inside a
+   * scrolling screen has to claim the gesture, or the parent ScrollView eats it
+   * and the crosshair only ever responds to taps.
+   *
+   * PAGE COORDINATES, NOT locationX — and this is a real iOS bug, not a
+   * preference. `locationX` is measured relative to the EVENT TARGET, and in
+   * react-native-svg every shape is a real UIView whose hitTest returns itself.
+   * So a touch landing on a candle body or wick targets that rect, and
+   * locationX arrives in the range 0..barW (at most 14) instead of 0..width.
+   * The crosshair therefore jumped back to bar 0 or 1 every time the finger
+   * crossed a candle — which, on a dense chart, is most of the time. Android was
+   * unaffected because it draws virtual nodes into one canvas, so this looked
+   * fine in a simulator on the wrong platform.
+   *
+   * gestureState.moveX/x0 are page coordinates, so they are immune to whatever
+   * the touch happened to land on. They need the chart's own page origin, which
+   * is what `originX` measures.
    */
+  const wrapRef = useRef<React.ComponentRef<typeof View>>(null);
+  const originX = useRef(0);
+
   const pan = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: (_e, g) => Math.abs(g.dx) > Math.abs(g.dy),
-        onPanResponderGrant: (e) => setCursor(indexAt(e.nativeEvent.locationX)),
-        onPanResponderMove: (e) => setCursor(indexAt(e.nativeEvent.locationX)),
+        onPanResponderGrant: (_e, g) => setCursor(indexAt(g.x0 - originX.current)),
+        onPanResponderMove: (_e, g) => setCursor(indexAt(g.moveX - originX.current)),
         onPanResponderRelease: () => setCursor(null),
         onPanResponderTerminate: () => setCursor(null),
       }),
@@ -169,7 +205,25 @@ export function Chart({
   const lineColor = rangeUp ? C.accent : C.down;
 
   return (
-    <View style={{ width, height }} {...pan.panHandlers}>
+    <View
+      ref={wrapRef}
+      // Re-measured on layout rather than once on mount: the chart sits inside a
+      // ScrollView, so its page origin moves.
+      onLayout={() => {
+        wrapRef.current?.measureInWindow((x: number) => {
+          originX.current = x;
+        });
+      }}
+      accessibilityRole="image"
+      accessibilityLabel={
+        n === 0
+          ? `No chart data for ${range}`
+          : `${range} price chart, ${n} bars, ` +
+            `${rangeUp ? 'up' : 'down'} ${Math.abs(((last - first) / first) * 100).toFixed(1)}% ` +
+            `over the range, from ${fmt(first)} to ${fmt(last)}`
+      }
+      style={{ width, height }}
+      {...pan.panHandlers}>
       <Svg width={width} height={height}>
         {/* Horizontal guides. Four, unlabelled — the axis labels live outside
             the chart so they never overlap a candle. */}
@@ -187,7 +241,7 @@ export function Chart({
           ))}
         </G>
 
-        {mode === 'line' ? (
+        {drawMode === 'line' ? (
           <>
             <Path
               d={areaPath(series.c, geom, width)}

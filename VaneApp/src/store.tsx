@@ -15,6 +15,7 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Horizon } from './signals.ts';
 import { clearSignalsCache, setEntitled } from './useSignals.ts';
+import { clearMarketsCache } from './useMarkets.ts';
 import { fetchEntitlement } from './entitlement.ts';
 import {
   type Prediction, type WriteResult,
@@ -380,6 +381,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           // next person to sign in on this phone sees the previous user's
           // snapshot, paid coins included.
           void clearSignalsCache();
+          // The markets cache holds the same paid payload and must go with it.
+          void clearMarketsCache();
           setPredictions([]);
         }
         return res.ok ? { ok: true } : { ok: false, reason: res.reason };

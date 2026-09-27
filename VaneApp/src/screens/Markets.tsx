@@ -125,6 +125,16 @@ export default function Markets({
     }
   }, [coins, query, sort]);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const onPullRefresh = useCallback(() => {
+    setRefreshing(true);
+    reload();
+  }, [reload]);
+  // Clear the spinner once the fetch that the pull triggered has settled.
+  React.useEffect(() => {
+    if (!loading) setRefreshing(false);
+  }, [loading]);
+
   const renderItem = useCallback(
     ({ item }: { item: Market }) => (
       <MarketRow coin={item} onPress={() => onOpenCoin(item)} />
@@ -208,7 +218,24 @@ export default function Markets({
         floor in the stylesheet is that requirement — do not shrink it to fit
         a layout.
       */}
-      {data?.source ? <Text style={st.attribution}>Powered by CoinGecko</Text> : null}
+      {/*
+        Unconditional, and allowFontScaling={false}.
+
+        Two separate licence bugs lived here. Gating on `data?.source` meant a
+        snapshot carrying coins but an empty source would display licensed data
+        with no attribution — the condition should be "am I showing this data",
+        not "did this field survive".
+
+        And the 10pt floor in the stylesheet was not actually a floor: ui.tsx
+        caps font scaling UPWARD at 1.6 but leaves allowFontScaling on, so a user
+        on Android's "Small" text size (0.85) or iOS's smallest Dynamic Type
+        (~0.82) rendered it at ~8.2-8.5pt. CoinGecko's API Terms require
+        "no smaller than font size 10" on every tier, so this one string opts out
+        of scaling entirely.
+      */}
+      <Text allowFontScaling={false} style={st.attribution}>
+        Powered by CoinGecko
+      </Text>
 
       <Disclaimer />
     </View>
@@ -216,32 +243,41 @@ export default function Markets({
 
   return (
     <Screen scroll={false}>
-      {visible.length === 0 ? (
-        <>
-          {header}
+      {/*
+        ONE FlatList, always — the empty state goes in ListEmptyComponent.
+
+        Branching between a fragment and a FlatList swapped the child at index 0
+        from a View to a FlatList, so React unmounted the subtree and remounted
+        the TextInput in a different parent. Typing a query that passed through a
+        zero-match prefix dismissed the keyboard and dropped focus mid-word, on
+        every search. It also left the empty state unscrollable inside
+        `Screen scroll={false}`, pushing the disclaimer off-screen.
+      */}
+      <FlatList
+        data={visible}
+        keyExtractor={(c) => c.sym}
+        renderItem={renderItem}
+        getItemLayout={getItemLayout}
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={7}
+        removeClippedSubviews
+        keyboardShouldPersistTaps="handled"
+        // Keeps the keyboard up while the list settles under it.
+        keyboardDismissMode="none"
+        ListHeaderComponent={header}
+        ListEmptyComponent={
           <EmptyState
             title="No coins match"
             sub={query ? `Nothing found for "${query}".` : 'No market data yet.'}
           />
-          {footer}
-        </>
-      ) : (
-        <FlatList
-          data={visible}
-          keyExtractor={(c) => c.sym}
-          renderItem={renderItem}
-          getItemLayout={getItemLayout}
-          initialNumToRender={12}
-          maxToRenderPerBatch={12}
-          windowSize={7}
-          removeClippedSubviews
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={header}
-          ListFooterComponent={footer}
-          refreshing={loading}
-          onRefresh={reload}
-        />
-      )}
+        }
+        ListFooterComponent={footer}
+        // Only a USER-initiated refresh should spin. Binding this to `loading`
+        // put a pull-to-refresh spinner on the first paint over cached rows.
+        refreshing={refreshing}
+        onRefresh={onPullRefresh}
+      />
     </Screen>
   );
 }

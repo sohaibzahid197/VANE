@@ -181,3 +181,39 @@ describe('compact', () => {
     expect(compactUnits(null)).toBe('—');
   });
 });
+
+describe('toSeries alignment guard', () => {
+  it('rejects a hole compensated by an extra element', () => {
+    // The loophole: filtering non-finite entries and THEN comparing lengths lets
+    // a null in one array and a compensating extra element cancel out. The
+    // length check passes and every bar after the hole draws against the next
+    // bar's open — the exact silent misalignment this guard exists to prevent.
+    const bad = {
+      t: [1, 2, 3, 4],
+      o: [10, 20, null, 40, 50],
+      h: [1, 2, 3, 4],
+      l: [1, 2, 3, 4],
+      c: [1, 2, 3, 4],
+      v: [1, 2, 3, 4],
+    };
+    expect(toSeries(bad)).toBeNull();
+  });
+
+  it('rejects a NaN rather than silently shortening the array', () => {
+    expect(
+      toSeries({
+        t: [1, 2, 3],
+        o: [1, Number.NaN, 3],
+        h: [1, 2, 3],
+        l: [1, 2, 3],
+        c: [1, 2, 3],
+        v: [1, 2, 3],
+      }),
+    ).toBeNull();
+  });
+
+  it('still accepts a well-formed series', () => {
+    const good = { t: [1, 2, 3], o: [1, 2, 3], h: [1, 2, 3], l: [1, 2, 3], c: [1, 2, 3], v: [1, 2, 3] };
+    expect(toSeries(good)).not.toBeNull();
+  });
+});

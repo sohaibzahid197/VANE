@@ -70,6 +70,13 @@ export type HistoryDoc = {
    * so nobody downstream mistakes these for exchange candles.
    */
   resolution: 'resampled-from-close';
+  /**
+   * True when one of the two fetches failed, so some ranges are missing.
+   *
+   * Without this a degraded document is indistinguishable from a complete one
+   * and staleCoins would skip it for 20 hours. See buildHistory.
+   */
+  partial?: boolean;
   ranges: Partial<Record<Range, Series>>;
 };
 
@@ -160,12 +167,26 @@ export async function buildHistory(
   const ranges = cutRanges(raw);
   if (Object.keys(ranges).length === 0) return null;
 
+  // A PARTIAL rebuild must not present itself as a complete, fresh one.
+  //
+  // publishHistory uses set(), not merge, so a run where the daily fetch failed
+  // but the hourly succeeded overwrites a complete 6-range document with a
+  // 4-range one — silently deleting 1Y and ALL — and stamps updatedAt with now.
+  // staleCoins then skips that coin for another 20 hours, so a chart that lost
+  // its long ranges reports itself as up to date. The degraded state is exactly
+  // what a mid-run quota exhaustion produces, so it is not a rare path.
+  //
+  // Marking it keeps the data (a 4-range chart beats no chart) while making the
+  // coin eligible for retry on the next run.
+  const complete = raw.intraday.length > 0 && raw.daily.length > 0;
+
   return {
     sym: coin.sym,
     name: coin.name,
     updatedAt: new Date().toISOString(),
     source: provider.name,
     resolution: 'resampled-from-close',
+    partial: !complete,
     ranges,
   };
 }
@@ -209,7 +230,18 @@ export async function publishHistory(
     if (chunk.length === 0) return;
     const batch = db.batch();
     for (const doc of chunk) {
-      batch.set(db.doc(`${isFree(doc.sym) ? 'public' : 'private'}/hist_${doc.sym}`), doc);
+      // A FREE coin is written to BOTH sides, exactly as publishMarkets does —
+      // `private/markets_all` contains the free coins too.
+      //
+      // Writing it only to `public/` left `private/hist_BTC` non-existent, so an
+      // ENTITLED reader asking for the paid path got a 404 and no chart at all.
+      // The bug was invisible to anyone testing without a subscription, and hit
+      // 100% of paying users on the three most-opened coins in the product.
+      //
+      // `private/` is the complete dataset; `public/` is the shop window cut
+      // from it. Not the other way round.
+      batch.set(db.doc(`private/hist_${doc.sym}`), doc);
+      if (isFree(doc.sym)) batch.set(db.doc(`public/hist_${doc.sym}`), doc);
     }
     try {
       await batch.commit();
@@ -276,13 +308,20 @@ export async function staleCoins(
   const out: typeof universe = [];
 
   for (const coin of universe) {
-    const where = isFree(coin.sym) ? 'public' : 'private';
-    const snap = await db.doc(`${where}/hist_${coin.sym}`).get();
+    // private/ holds every coin now, free ones included, so staleness is read
+    // from one place rather than branching on the free list.
+    const snap = await db.doc(`private/hist_${coin.sym}`).get();
     if (!snap.exists) {
       out.push(coin);
       continue;
     }
-    const updatedAt = Date.parse((snap.data() as { updatedAt?: string }).updatedAt ?? '');
+    const data = snap.data() as { updatedAt?: string; partial?: boolean };
+    // A partial rebuild is always retried, whatever its age.
+    if (data.partial) {
+      out.push(coin);
+      continue;
+    }
+    const updatedAt = Date.parse(data.updatedAt ?? '');
     if (!Number.isFinite(updatedAt) || now - updatedAt > MAX_AGE_MS) out.push(coin);
   }
 

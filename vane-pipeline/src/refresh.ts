@@ -97,6 +97,29 @@ async function main() {
   // it. A quota exhausted at coin 180 leaves the published documents half
   // updated and looks exactly like a bug, so the warning belongs at the front.
   const tier = process.env.COINGECKO_TIER ?? 'demo';
+
+  // A COMMERCIAL LICENCE BOUNDARY MUST NOT BE REACHABLE BY AN UNSET VARIABLE.
+  //
+  // `demo` is the right default on a developer's laptop and the wrong one in CI:
+  // the workflow's `${{ vars.COINGECKO_TIER || 'demo' }}` means a misspelled or
+  // missing repo variable silently publishes the documents a PAYING app reads,
+  // using a tier whose licence row on CoinGecko's own pricing matrix is blank.
+  // Demo does not fail in that situation — it works, at reduced scale, which is
+  // exactly what makes it dangerous.
+  //
+  // So a publishing run on `demo` has to be asked for out loud. Dry runs and
+  // local development are unaffected.
+  if (!dry && tier === 'demo' && process.env.ALLOW_DEMO_PUBLISH !== '1') {
+    throw new Error(
+      'Refusing to publish on the CoinGecko Demo tier.\n' +
+        "  Demo carries NO commercial licence — its License cell is blank on\n" +
+        '  CoinGecko\'s pricing matrix, while every paid tier reads "Commercial".\n' +
+        '  Publishing from it feeds a paid app from an unlicensed source.\n\n' +
+        '  For a real deployment: set COINGECKO_TIER=pro with a paid key.\n' +
+        '  For local development against Firestore: ALLOW_DEMO_PUBLISH=1\n' +
+        '  To inspect output without publishing at all: DRY_RUN=1',
+    );
+  }
   const budget = creditBudget(tier, {
     coins: UNIVERSE_SIZE,
     pricesPerDay: Number(process.env.PRICES_PER_DAY ?? '96'),
@@ -256,7 +279,7 @@ async function main() {
     for (const m of markets) prices[m.sym] = m.price;
     const known = new Set(markets.map((m) => m.sym));
 
-    const { resolvePredictions, aggregatePolls, writeHealth } = await import('./resolve.ts');
+    const { resolvePredictions, aggregatePolls } = await import('./resolve.ts');
 
     try {
       const r = await resolvePredictions(db, prices);
@@ -318,8 +341,22 @@ async function main() {
       console.warn(`aggregatePolls failed: ${(e as Error).message}`);
     }
 
-    health.calls = provider.callsUsed();
+  }
+
+  // OUTSIDE the `if (markets)` block, deliberately.
+  //
+  // It used to sit inside it, which meant `history` mode — the only mode
+  // carrying a licence obligation, since CoinGecko permits storage only if the
+  // cache is refreshed every 24 hours — computed its health entry and then threw
+  // it away. ops/resolver_health could only ever report a history run that
+  // happened to be part of a `full` run, so a nightly rebuild failing silently
+  // was invisible in exactly the place built to make silence impossible.
+  health.calls = provider.callsUsed();
+  try {
+    const { writeHealth } = await import('./resolve.ts');
     await writeHealth(db, health);
+  } catch (e) {
+    console.warn(`writeHealth failed: ${(e as Error).message}`);
   }
 
   console.log(`done. ${provider.callsUsed()} provider call(s) this run.`);

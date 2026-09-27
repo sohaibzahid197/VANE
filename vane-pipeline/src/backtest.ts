@@ -62,7 +62,37 @@ const WARMUP = 720; // skip the first 30 days so indicators are settled
  * standard error roughly double what the raw n implied. Sampling at the
  * horizon length makes the windows non-overlapping and the statistics honest.
  */
-const STRIDE_BY_HORIZON: Record<Horizon, number> = { '24H': 24, '7D': 168, '30D': 168 };
+const STRIDE_BY_HORIZON: Record<Horizon, number> = { '24H': 24, '7D': 168, '30D': 720 };
+
+/**
+ * 30D was 168, not 720 — a 4.3x overlap hiding under a comment claiming the
+ * opposite.
+ *
+ * With `ahead = 720` and `stride = 168`, each 30-day outcome window shared 552
+ * of its 720 hours with the next, so the effective sample was about a quarter of
+ * the reported n and the true standard error roughly 2.1x what the printed row
+ * implied. The run PRINTED "non-overlapping windows" while doing this, and
+ * MIN_EDGE = 0.03 was justified by a standard-error argument only valid for
+ * non-overlapping windows — so an inflated-n 30D row could print
+ * "GATE: PASS", which is the line a human reads to decide whether to ship.
+ *
+ * The cost of fixing it is honesty about sample size: at 720 the 30D row will
+ * report roughly a quarter as many observations. That number was always the
+ * real one.
+ */
+function assertStridesAreHonest() {
+  for (const h of HORIZONS) {
+    const ahead = HORIZON_HOURS[h];
+    const stride = STRIDE_BY_HORIZON[h];
+    if (stride < ahead) {
+      throw new Error(
+        `${h}: stride ${stride}h < horizon ${ahead}h — evaluation windows would ` +
+          `overlap by ${(100 * (1 - stride / ahead)).toFixed(0)}%, inflating n ` +
+          `and understating the standard error.`,
+      );
+    }
+  }
+}
 
 /**
  * Edge required to call a horizon a pass.
@@ -92,9 +122,22 @@ function accuracy(rows: Row[], key: 'model' | 'naive') {
  * and the only thing keeping the backtest honest is that it never feeds that
  * value back into the score.
  */
-export function buildRows(candles: Candle[], ahead: number, stride: number): Row[] {
+export function buildRows(
+  candles: Candle[],
+  ahead: number,
+  stride: number,
+  /**
+   * Precomputed indicators, to avoid recomputing them once per horizon.
+   *
+   * prepare() was hoisted out of the scoring loop for a reason — recomputing it
+   * per scored index made a full run ~3,500x more expensive. Calling buildRows
+   * three times per coin would reintroduce a smaller version of the same waste,
+   * so the caller passes what it already has. Optional, so tests can ignore it.
+   */
+  precomputed?: ReturnType<typeof prepare>,
+): Row[] {
   const closes = candles.map((c) => c.close);
-  const ind = prepare(candles);
+  const ind = precomputed ?? prepare(candles);
   const rows: Row[] = [];
   for (let i = WARMUP; i < candles.length - ahead - 1; i += stride) {
     const sig = scoreAt(ind, i);
@@ -109,6 +152,9 @@ export function buildRows(candles: Candle[], ahead: number, stride: number): Row
 }
 
 async function main() {
+  // Fail before spending credits, not after printing a verdict.
+  assertStridesAreHonest();
+
   const provider = coinGeckoFromEnv();
   const universe = (await fetchUniverse(provider, Math.min(BACKTEST_COINS, UNIVERSE_SIZE))).slice(
     0,
@@ -133,7 +179,6 @@ async function main() {
   for (const coin of universe) {
     process.stdout.write(`  fetching ${coin.sym.padEnd(9)} ... `);
     const candles = await provider.candlesRange(coin.id, from, to, 'hourly');
-    const closes = candles.map((c) => c.close);
     console.log(`${candles.length} candles`);
 
     // The range endpoint returns LESS than asked for when the window exceeds the
@@ -150,21 +195,15 @@ async function main() {
     const ind = prepare(candles);
 
     for (const h of HORIZONS) {
-      const ahead = HORIZON_HOURS[h];
-      const rows = perHorizon.get(h)!;
-
-      // -1 so the final sample never resolves against the still-forming candle,
-      // which publish.ts also drops. Keeps backtest and live in agreement.
-      const stride = STRIDE_BY_HORIZON[h];
-      for (let i = WARMUP; i < candles.length - ahead - 1; i += stride) {
-        const sig = scoreAt(ind, i);
-        rows.push({
-          model: sig.up,
-          naive: i >= 24 ? closes[i] > closes[i - 24] : true,
-          actual: closes[i + ahead] > closes[i],
-          score: sig.score,
-        });
-      }
+      // Call the TESTED function rather than a copy of it.
+      //
+      // This loop used to be a verbatim duplicate of buildRows(), and main()
+      // never called buildRows — so the entire test file exercised a function
+      // production did not run. That is how a 4.3x window overlap sat in the
+      // tree under a green suite.
+      perHorizon.get(h)!.push(
+        ...buildRows(candles, HORIZON_HOURS[h], STRIDE_BY_HORIZON[h], ind),
+      );
     }
   }
 

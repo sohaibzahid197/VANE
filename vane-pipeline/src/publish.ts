@@ -60,11 +60,30 @@ export function buildCoin(
   meta: { sym: string; name: string },
   candles: Candle[],
 ): CoinDoc {
-  // Binance's last row is the CURRENT, still-forming hour: its close is a
-  // mid-hour snapshot and its volume is partial, which biases the volume
-  // feature negative. The backtest only ever sees closed candles, so scoring
-  // the open one would make live accuracy diverge from backtested accuracy.
-  const closed = candles.slice(0, -1);
+  // Separate the LATEST PRICE from the BARS THE MODEL SCORES. They are not the
+  // same sample, and conflating them cost ~48 minutes of staleness on every
+  // published price.
+  //
+  // The rule used to be `candles.slice(0, -1)`, justified by Binance returning
+  // the current, still-forming hour as its last row. The migration to CoinGecko
+  // falsified that premise without changing the line. CoinGecko's hourly series
+  // is hour-aligned — 15:00, 16:00 — and then APPENDS a live snapshot at the
+  // moment of the request (observed: a 16:46:20 sample 1.9 minutes old beside a
+  // 16:00 bar 48 minutes old). Dropping it did not discard a partial candle; it
+  // discarded the freshest price in the response.
+  //
+  // That price is not cosmetic. It becomes `entryPrice` for VANE's own scorecard
+  // calls and for every user prediction, while the exit is live spot at grading.
+  // A one-sided ~48-minute extension of every measurement window is a
+  // measurement error in the one number this product asks to be trusted on.
+  //
+  // So: the live snapshot is detected by NOT being hour-aligned, excluded from
+  // the indicator input (so live and backtest still see identical closed bars),
+  // and used for the published price.
+  const HOUR = 3_600_000;
+  const newest = candles[candles.length - 1];
+  const hasLiveSnapshot = !!newest && newest.openTime % HOUR !== 0;
+  const closed = hasLiveSnapshot ? candles.slice(0, -1) : candles;
   // zscore needs 48 bars of warmup. Without this guard a delisted or renamed
   // symbol returns [] and the crash surfaces as `undefined.toPrecision`,
   // naming neither the symbol nor the real cause, and killing every coin.
@@ -94,15 +113,19 @@ export function buildCoin(
   const step = Math.max(1, Math.floor(window.length / HISTORY_POINTS));
   const history: number[] = [];
   for (let j = 0; j < window.length; j += step) history.push(round(window[j]));
-  // Always end on the latest close so the line meets the current price.
-  if (history[history.length - 1] !== round(ind.closes[i])) {
-    history.push(round(ind.closes[i]));
+  // The freshest number available: the live snapshot when the provider gave
+  // one, otherwise the newest closed bar.
+  const price = hasLiveSnapshot ? newest!.close : ind.closes[i];
+
+  // Always end on the latest price so the line meets the figure beside it.
+  if (history[history.length - 1] !== round(price)) {
+    history.push(round(price));
   }
 
   return {
     sym: meta.sym,
     name: meta.name,
-    price: round(ind.closes[i]),
+    price: round(price),
     history,
     up: sig.up,
     conf: CALIBRATION ? confidenceUp(CALIBRATION, sig.score) : null,
