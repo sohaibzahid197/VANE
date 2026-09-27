@@ -23,8 +23,61 @@ type Firestore = import('firebase-admin/firestore').Firestore;
 /** Where the pipeline keeps its own id -> ticker registry. */
 const UNIVERSE_DOC = 'ops/universe';
 
-/** How many coins the product carries. */
-export const UNIVERSE_SIZE = 250;
+/**
+ * How many coins the product carries.
+ *
+ * Overridable because the credit budget, not the product, sets the ceiling
+ * during development. CoinGecko's free Demo plan allows 10,000 credits a month;
+ * Basic allows 100,000. The full 250-coin cadence needs about 66,000, so it does
+ * not fit on Demo at all — see creditBudget() below, which is there to say so
+ * before a run spends the month's quota rather than after.
+ */
+export const UNIVERSE_SIZE = Number(process.env.UNIVERSE_SIZE ?? '250');
+
+/** Monthly credit allowance by plan, from CoinGecko's published pricing. */
+export const MONTHLY_CREDITS = { demo: 10_000, basic: 100_000 } as const;
+
+export type BudgetInput = {
+  coins: number;
+  /** Runs per day of each mode. */
+  pricesPerDay: number;
+  signalsPerDay: number;
+  historyPerDay: number;
+};
+
+/**
+ * Projected monthly credit spend.
+ *
+ * CoinGecko bills a flat 1 call = 1 credit, and failed requests (4xx/5xx) do not
+ * consume credits — so this is a straight count of successful calls.
+ *
+ *   prices   2 calls per run  (one /coins/markets page + /global), regardless
+ *                             of coin count — the page covers 250 at once
+ *   signals  1 call per coin  (market_chart, hourly)
+ *   history  2 calls per coin (90d hourly + max daily)
+ */
+export function projectedMonthlyCredits(b: BudgetInput): number {
+  const perDay =
+    b.pricesPerDay * 2 + b.signalsPerDay * b.coins + b.historyPerDay * b.coins * 2;
+  return Math.round(perDay * 30);
+}
+
+/**
+ * Warn when the configured cadence cannot fit the plan.
+ *
+ * Deliberately a warning at start-up rather than a failure part way through: a
+ * run that exhausts the quota at coin 180 leaves the published documents half
+ * updated, with no signal that the cause was billing rather than a bug.
+ */
+export function creditBudget(
+  tier: string,
+  b: BudgetInput,
+): { projected: number; allowance: number; fits: boolean } {
+  const allowance =
+    tier === 'demo' ? MONTHLY_CREDITS.demo : MONTHLY_CREDITS.basic;
+  const projected = projectedMonthlyCredits(b);
+  return { projected, allowance, fits: projected <= allowance };
+}
 
 export type UniverseEntry = { id: string; sym: string; name: string };
 

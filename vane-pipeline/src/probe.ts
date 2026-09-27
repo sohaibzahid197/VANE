@@ -201,11 +201,36 @@ async function main() {
     const ranges = cutRanges({ intraday, daily });
     const got = RANGES.filter((r) => ranges[r]);
     const absent = RANGES.filter((r) => !ranges[r]);
-    if (absent.length === 0) {
-      console.log(ok(`all 7 ranges cut — ${got.map((r) => `${r}:${ranges[r]!.c.length}`).join(' ')}`));
+
+    // ALL and 1Y are mutually exclusive by design when they would cover the
+    // same window: on a plan capped at 365 days ALL would be a false label, and
+    // for a coin younger than a year 1Y would be. Exactly one of them missing is
+    // the intended outcome, not a gap.
+    const yearOrAll = (r: string) => r === 'ALL' || r === '1Y';
+    const realGaps = absent.filter((r) => !yearOrAll(r));
+    const bothLongMissing = absent.filter(yearOrAll).length === 2;
+
+    if (realGaps.length === 0 && !bothLongMissing) {
+      const dropped = absent.find(yearOrAll);
+      console.log(
+        ok(
+          `ranges cut — ${got.map((r) => `${r}:${ranges[r]!.c.length}`).join(' ')}` +
+            (dropped
+              ? `  (${dropped} correctly omitted — it would duplicate ${
+                  dropped === 'ALL' ? '1Y' : 'ALL'
+                })`
+              : ''),
+        ),
+      );
+      if (dropped === 'ALL') {
+        console.log(
+          '        this plan reaches 365 days, so there is no all-time series to show',
+        );
+      }
     } else {
-      console.log(bad(`ranges missing: ${absent.join(', ')}`));
-      problems.push(`ranges missing: ${absent.join(', ')}`);
+      const missing = bothLongMissing ? absent : realGaps;
+      console.log(bad(`ranges missing: ${missing.join(', ')}`));
+      problems.push(`ranges missing: ${missing.join(', ')}`);
     }
   } catch (e) {
     console.log(bad(`range cut failed: ${(e as Error).message}`));

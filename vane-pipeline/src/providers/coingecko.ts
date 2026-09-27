@@ -40,7 +40,22 @@ const PRO_BASE = 'https://pro-api.coingecko.com/api/v3';
  * runs on a cron, not in front of a user. Being slow is free; being throttled
  * mid-run leaves the published document half-updated.
  */
-const RPM = { demo: 60, pro: 200 } as const;
+const RPM = { demo: 30, pro: 200 } as const;
+
+/**
+ * How far back each tier may query historical data.
+ *
+ * Demo is capped at 365 days and says so with error_code 10012: "Public API
+ * users are limited to querying historical data within the past 365 days."
+ * Asking for `days=max` on a Demo key is therefore a hard 401, not a degraded
+ * response — which took a live probe to discover, because every stub happily
+ * returns whatever it is given.
+ *
+ * Basic reaches 2 years; Analyst and above reach 2013. `pro` here means "any
+ * paid tier", so it takes the conservative Basic figure and can be raised with
+ * MAX_HISTORY_DAYS when the plan allows more.
+ */
+const MAX_HISTORY_DAYS = { demo: 365, pro: 730 } as const;
 
 export type CoinGeckoOptions = {
   apiKey: string;
@@ -60,6 +75,8 @@ export class CoinGecko implements MarketProvider {
   private readonly doFetch: typeof fetch;
   private lastCallAt = 0;
   private calls = 0;
+  /** Furthest back this key may ask. See MAX_HISTORY_DAYS. */
+  readonly maxHistoryDays: number;
 
   constructor(opts: CoinGeckoOptions) {
     if (!opts.apiKey) {
@@ -72,6 +89,9 @@ export class CoinGecko implements MarketProvider {
     this.tier = opts.tier ?? 'demo';
     this.base = this.tier === 'pro' ? PRO_BASE : DEMO_BASE;
     this.minGapMs = Math.ceil(60_000 / RPM[this.tier]);
+    this.maxHistoryDays = Number(
+      process.env.MAX_HISTORY_DAYS ?? MAX_HISTORY_DAYS[this.tier],
+    );
     this.doFetch = opts.fetchImpl ?? fetch;
   }
 
@@ -214,7 +234,11 @@ export class CoinGecko implements MarketProvider {
    */
   async candles(id: string, days: number | 'max', interval?: Interval): Promise<Candle[]> {
     const path = `/coins/${encodeURIComponent(id)}/market_chart`;
-    const params: Record<string, string | number> = { vs_currency: 'usd', days };
+    // 'max' means "as far back as this key can reach", not "all of history".
+    // Sending a literal max on a capped tier is rejected outright rather than
+    // trimmed, so the clamp has to happen here.
+    const asked = days === 'max' ? this.maxHistoryDays : Math.min(days, this.maxHistoryDays);
+    const params: Record<string, string | number> = { vs_currency: 'usd', days: asked };
 
     try {
       const chart = await this.get<CgMarketChart>(path, {
@@ -235,6 +259,20 @@ export class CoinGecko implements MarketProvider {
       // pipeline running unauthenticated on the public tier: coarser bars, and
       // no commercial licence whatsoever. That is the exact failure this
       // migration exists to prevent, so it has to be loud.
+      // 10012: the window reaches further back than the plan allows. Retry once
+      // at the documented Demo ceiling rather than losing the coin — a shorter
+      // chart is a real chart, and the alternative is no long-range series at all.
+      if (/10012|allowed time range/i.test(msg) && asked > 365) {
+        console.warn(`${id}: ${asked}d exceeds this plan's history window, retrying at 365d`);
+        return chartToCandles(
+          await this.get<CgMarketChart>(path, {
+            ...params,
+            days: 365,
+            ...(interval ? { interval } : {}),
+          }),
+        );
+      }
+
       if (/10002|API Key Missing|coingecko 401/i.test(msg)) throw e;
 
       const rejectedInterval = interval && /coingecko 4\d\d/.test(msg);

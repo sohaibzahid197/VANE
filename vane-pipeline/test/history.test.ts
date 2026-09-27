@@ -61,17 +61,23 @@ test('short ranges really are shorter than long ones', () => {
 });
 
 test('a newly-listed coin still gets a chart for every range it cannot fill', () => {
-  // Four days of hourly data. There is no 30-day or 90-day window.
+  // Four days of hourly data. There is no 30-day or 90-day window, but every
+  // range must still render something rather than a blank panel.
   const out = cutRanges({ intraday: bars(4 * 24, HOUR), daily: bars(4, DAY) });
   for (const r of RANGES) {
+    // 1Y is the one honest exception: for a four-day-old coin it would be a
+    // false label, and ALL says the same thing truthfully.
+    if (r === '1Y') continue;
     assert.ok(out[r], `range ${r} vanished for a young coin`);
     assert.ok(out[r]!.c.length >= 2, `range ${r} is unusably short`);
   }
+  assert.ok(out.ALL, 'ALL is the truthful label for a young coin and must survive');
+  assert.equal(out['1Y'], undefined, '1Y overstates a four-day-old coin');
 });
 
 test('a missing daily series does not lose the intraday ranges', () => {
   const out = cutRanges({ intraday: bars(90 * 24, HOUR), daily: [] });
-  for (const r of ['1H', '24H', '7D', '30D', '90D'] as const) {
+  for (const r of ['24H', '7D', '30D', '90D'] as const) {
     assert.ok(out[r], `lost intraday range ${r} when daily was empty`);
   }
   assert.equal(out['1Y'], undefined, 'should not invent a 1Y series with no daily data');
@@ -115,4 +121,19 @@ test('the licence refresh floor stays under 24 hours', () => {
   // 24 hours. If this constant ever creeps to or past that, stored series can
   // age out of the licence between runs.
   assert.ok(MAX_AGE_MS < 24 * 3_600_000, 'MAX_AGE_MS must leave margin under the 24h licence term');
+});
+
+test('a PLAN-capped year drops ALL and keeps 1Y', () => {
+  // CoinGecko's Demo tier stops at 365 days, so a decade-old coin still returns
+  // exactly a year. "1Y" is true here; "ALL" would be a false claim.
+  const out = cutRanges({ intraday: bars(90 * 24, HOUR), daily: bars(365, DAY) });
+  assert.ok(out['1Y'], '1Y should survive a plan cap');
+  assert.equal(out.ALL, undefined, 'ALL must not duplicate a plan-capped year');
+});
+
+test('ALL survives when there is genuinely more history than a year', () => {
+  const out = cutRanges({ intraday: bars(90 * 24, HOUR), daily: bars(1500, DAY) });
+  assert.ok(out.ALL, 'ALL should exist when history exceeds a year');
+  const span = (s: { t: number[] }) => s.t[s.t.length - 1]! - s.t[0]!;
+  assert.ok(span(out.ALL!) > span(out['1Y']!) * 1.05, 'ALL should cover more than 1Y');
 });

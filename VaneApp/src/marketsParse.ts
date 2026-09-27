@@ -7,7 +7,10 @@
 
 import { compact, compactUnits, money, num, numOr, signed } from './format.ts';
 
-export const RANGES = ['1H', '24H', '7D', '30D', '90D', '1Y', 'ALL'] as const;
+// Mirrors the pipeline's range list. No 1H: a one-hour window cut from hourly
+// candles is two bars, which is a broken tab rather than a chart. See
+// vane-pipeline/src/providers/types.ts for the full reasoning.
+export const RANGES = ['24H', '7D', '30D', '90D', '1Y', 'ALL'] as const;
 export type Range = (typeof RANGES)[number];
 
 export type Market = {

@@ -39,6 +39,7 @@ import './env.ts';
 import { HORIZONS_ALL, buildCoin } from './publish.ts';
 import {
   UNIVERSE_SIZE,
+  creditBudget,
   fetchUniverse,
   loadUniverse,
   publishMarkets,
@@ -91,6 +92,30 @@ async function main() {
   const provider: MarketProvider = coinGeckoFromEnv();
 
   console.log(`mode=${mode} provider=${provider.name}${dry ? ' (dry run)' : ''}`);
+
+  // Say whether this configuration can survive the month BEFORE spending any of
+  // it. A quota exhausted at coin 180 leaves the published documents half
+  // updated and looks exactly like a bug, so the warning belongs at the front.
+  const tier = process.env.COINGECKO_TIER ?? 'demo';
+  const budget = creditBudget(tier, {
+    coins: UNIVERSE_SIZE,
+    pricesPerDay: Number(process.env.PRICES_PER_DAY ?? '96'),
+    signalsPerDay: Number(process.env.SIGNALS_PER_DAY ?? '6'),
+    historyPerDay: Number(process.env.HISTORY_PER_DAY ?? '1'),
+  });
+  console.log(
+    `budget: ~${budget.projected.toLocaleString('en-US')} credits/month of ` +
+      `${budget.allowance.toLocaleString('en-US')} on ${tier} ` +
+      `(${UNIVERSE_SIZE} coins)`,
+  );
+  if (!budget.fits) {
+    console.warn(
+      `  OVER BUDGET by ${(budget.projected - budget.allowance).toLocaleString('en-US')} ` +
+        `credits/month.\n` +
+        `  Lower UNIVERSE_SIZE, slow the cadence, or move to a paid tier.\n` +
+        `  A free Demo key sustains roughly 50 coins on a daily rebuild.`,
+    );
+  }
 
   // --- prices: one call, every coin ---------------------------------------
   //

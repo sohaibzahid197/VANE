@@ -40,7 +40,6 @@ const isFree = (sym: string) => (FREE_SYMBOLS as readonly string[]).includes(sym
  * request itself and ALL is unbounded by definition.
  */
 const RANGE_PLAN: Record<Range, { from: 'intraday' | 'daily'; hours: number | null }> = {
-  '1H': { from: 'intraday', hours: 1 },
   '24H': { from: 'intraday', hours: 24 },
   '7D': { from: 'intraday', hours: 24 * 7 },
   '30D': { from: 'intraday', hours: 24 * 30 },
@@ -103,6 +102,33 @@ export function cutRanges(raw: {
     const use = windowed.length >= 2 ? windowed : source;
     const series = resample(use, RANGE_POINTS[range]);
     if (series.c.length > 0) out[range] = series;
+  }
+
+  // When 1Y and ALL cover the same window, one of the two labels is a lie —
+  // and WHICH one depends on why they match.
+  //
+  //   Plan-capped: CoinGecko's Demo tier stops at 365 days, so a coin with a
+  //     decade of history still returns exactly a year. Here "1Y" is true and
+  //     "ALL" is false, so ALL goes.
+  //
+  //   Coin-capped: a token listed four days ago returns four days however far
+  //     back we ask. Here "ALL" is true and "1Y" is false, so 1Y goes.
+  //
+  // Dropping the same one in both cases would either claim a year of history
+  // for a four-day-old token, or claim all-time for a year of it.
+  const year = out['1Y'];
+  const all = out.ALL;
+  if (year && all) {
+    const span = (s: Series) => s.t[s.t.length - 1]! - s.t[0]!;
+    const yearSpan = span(year);
+    const allSpan = span(all);
+    // 5% tolerance: resampling puts bucket boundaries in slightly different
+    // places, so identical windows do not produce byte-identical spans.
+    if (allSpan <= yearSpan * 1.05) {
+      const YEAR_MS = 360 * 24 * 3_600_000;
+      if (allSpan >= YEAR_MS) delete out.ALL;
+      else delete out['1Y'];
+    }
   }
 
   return out;

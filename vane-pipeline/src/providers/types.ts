@@ -29,7 +29,20 @@ export type Candle = {
  * to a stored document, so an open-ended range parameter would mean unbounded
  * storage and unbounded quota. Seven is what a phone-sized chart needs.
  */
-export const RANGES = ['1H', '24H', '7D', '30D', '90D', '1Y', 'ALL'] as const;
+/**
+ * NO 1H RANGE, deliberately.
+ *
+ * A one-hour window cut from hourly candles is one or two bars — a "chart" that
+ * is a dot and a line, shipped under a tab that promises a chart. A live probe
+ * produced exactly that (1H:2) before this was removed.
+ *
+ * Making it real needs 5-minutely data, which is a separate request per coin,
+ * AND a refresh cadence to match: a 1H chart rebuilt once a day is stale before
+ * anyone sees it, and the history rebuild is daily because the licence requires
+ * at most 24h staleness, not because an hour chart wants it. That is a
+ * different pipeline, so 1H waits until there is one.
+ */
+export const RANGES = ['24H', '7D', '30D', '90D', '1Y', 'ALL'] as const;
 export type Range = (typeof RANGES)[number];
 
 /**
@@ -42,7 +55,6 @@ export type Range = (typeof RANGES)[number];
  * phone chart can draw.
  */
 export const RANGE_POINTS: Record<Range, number> = {
-  '1H': 60,
   '24H': 96,
   '7D': 168,
   '30D': 180,

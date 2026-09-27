@@ -32,8 +32,13 @@ import {
 } from '../markets.ts';
 import { useStore } from '../store.tsx';
 
-/** Line rather than candles for 1H: too few bars for bodies to read. */
-const LINE_RANGES: Range[] = ['1H'];
+/**
+ * Ranges drawn as a line rather than candles.
+ *
+ * Empty for now: every published range has enough bars for candle bodies to
+ * read. Kept as the single place to change if a short range is ever added back.
+ */
+const LINE_RANGES: Range[] = [];
 
 export default function CoinChart({
   market,
