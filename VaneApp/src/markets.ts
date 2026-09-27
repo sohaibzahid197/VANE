@@ -44,6 +44,29 @@ export type MarketsSnapshot = {
 };
 
 /**
+ * KNOWN LIMITATION — paid responses persist in the OS HTTP cache.
+ *
+ * Firestore REST sends no Cache-Control header at all, so iOS applies heuristic
+ * caching and writes every response to the app's Cache.db — `private/` documents
+ * included. Confirmed on a device: with AsyncStorage wiped and the network off,
+ * the app still rendered paid data straight out of that store.
+ *
+ * This is NOT a paywall bypass. An unentitled app never requests the paid URL,
+ * and a revoke test correctly downgraded 50 coins to 3 with no leak. It is a
+ * data-hygiene gap: clearMarketsCache() and clearSignalsCache() empty
+ * AsyncStorage but cannot reach the OS cache, so a paid payload outlives
+ * sign-out, account deletion, and the CoinGecko obligation to delete all stored
+ * Data on termination.
+ *
+ * It is NOT fixable from JavaScript here. React Native's fetch does not forward
+ * a `cache` option — RCTNetworking never reads one — so `cache: 'no-store'`
+ * compiles away to nothing and would only look like a fix. The real remedy is
+ * native: install a zero-capacity URLCache, or call removeAllCachedResponses()
+ * from the sign-out path, in AppDelegate. Left undone deliberately rather than
+ * papered over.
+ */
+
+/**
  * Fetch one document, preferring the paid copy when entitled.
  *
  * Shared by markets and history because the fallback rule is subtle and must
