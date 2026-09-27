@@ -45,6 +45,8 @@ export type NotifyResult = {
  * The array is positional and shared with the app, where indices have never
  * been renumbered precisely so an existing install's stored preferences keep
  * meaning what they meant. Index 1 has always been the flip alert.
+ *
+ * THIS CONSTANT IS NOT USED, AND THAT IS THE BUG — see the note on notifyFlips.
  */
 const FLIP_ALERT_INDEX = 1;
 
@@ -85,6 +87,39 @@ export function flipMessage(
 }
 
 /**
+ * KNOWN BROKEN END TO END — this function can never send anything today.
+ *
+ * Verified on a device and against live Firestore. It filters targets on two
+ * fields of `users/{uid}`, and NEITHER is ever populated:
+ *
+ *   watchlist — the app keeps the watchlist in AsyncStorage only. Nothing in
+ *     VaneApp/src writes it to Firestore; `firebase.ts` has no watchlist code at
+ *     all, even though firestore.rules already permits the field. Starring a
+ *     coin fills the star and updates local state, and the server never learns
+ *     of it. Measured: 5 users, all 5 with a valid FCM token, 0 with a
+ *     watchlist. So `watch.some(...)` below fails for every user, every run.
+ *
+ *   the alert toggle — FLIP_ALERT_INDEX is defined and exported above and read
+ *     by nothing. The preference lives in the app's AsyncStorage, and the rules'
+ *     hasOnly() list has no field for it, so the server cannot know it even in
+ *     principle.
+ *
+ * The consequence of fixing only the first half would be WORSE than the current
+ * state: pushes would start flowing to users who had turned the toggle off,
+ * which is a notification-consent problem rather than a missing feature. Both
+ * halves have to land together —
+ *
+ *   1. add an alert field to the hasOnly() list in firestore.rules (and DEPLOY
+ *      it; rules are not deployed by the app build)
+ *   2. have the app write both watchlist and that field to users/{uid}
+ *   3. filter on the field here, using FLIP_ALERT_INDEX
+ *
+ * Until then the Alerts screen offers a Pro toggle for a feature that cannot
+ * fire. Nobody is affected today — the toggle is Pro-gated and there are no
+ * subscribers — but the first person to pay for it would be.
+ *
+ * ---
+ *
  * Send a flip notification to everyone watching an affected coin.
  *
  * Reads users rather than querying by watchlist: Firestore cannot index
