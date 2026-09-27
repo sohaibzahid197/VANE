@@ -1,7 +1,26 @@
 name: refresh-signals
 
+# ============================================================================
+# PAUSED 2026-09-27. DO NOT RE-ENABLE WITHOUT READING THIS.
+#
+# This workflow publishes market data fetched from Binance. Binance's Vision
+# Dataset Terms (v1.0, 26 Aug 2026) license that data under CC BY-NC-SA 4.0;
+# clause 3.4 states "Commercial licensing is strictly excluded" and clause 2.4
+# pulls "derivative analytical indicators" inside that scope. VANE is a paid
+# subscription app, so every run of this workflow published unlicensed data to
+# a commercial product's database.
+#
+# The replacement — a licensed CoinGecko pipeline — is on the branch
+# feat/licensed-data-and-charts, awaiting review. Re-enable by merging that
+# branch, NOT by uncommenting the schedule below.
+#
+# The Cloudflare worker `vane-cron` has been paused separately; it dispatched
+# this workflow every 15 minutes and is the reason `schedule:` alone being
+# unreliable did not matter.
+# ============================================================================
+
 on:
-  schedule:
+  # schedule:
     # TWO schedules, 15 minutes apart. Their fire times are DISJOINT
     # (*/30 -> :00,:30; 15,45 -> :15,:45), so neither is a standby for the
     # other's slot — together they simply run every 15 minutes.
@@ -16,8 +35,9 @@ on:
     #
     # Actions minutes are free on a public repo, so the extra runs cost
     # nothing there. What they do cost is Firestore writes — see scorecard.ts.
-    - cron: '*/30 * * * *'
-    - cron: '15,45 * * * *'
+    # DISABLED — see the banner at the top of this file.
+    # - cron: '*/30 * * * *'
+    # - cron: '15,45 * * * *'
   workflow_dispatch:
 
 concurrency:
