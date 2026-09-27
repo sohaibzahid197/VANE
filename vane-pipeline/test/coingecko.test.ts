@@ -80,22 +80,70 @@ test('demo and pro use different hosts and different header names', async () => 
 // --- chartToCandles --------------------------------------------------------
 
 test('volumes are matched by timestamp, not zipped by index', () => {
-  const t = [1000, 2000, 3000, 4000];
+  // HOURLY spacing, which is what the provider actually returns. The original
+  // version of this test spaced samples one second apart — unrealistic, and it
+  // made any matching tolerance look like a bug.
+  const H = 3_600_000;
+  const base = 1_700_000_000_000;
+  const t = [0, 1, 2, 3].map((i) => base + i * H);
   const candles = chartToCandles({
     prices: t.map((ts, i) => [ts, 100 + i] as [number, number]),
-    // The 2000 sample is MISSING. An index zip would assign 3000's volume to
-    // the 2000 bar and shift everything after it.
+    // The second sample is MISSING. An index zip would assign the third bar's
+    // volume to it and shift everything after.
     total_volumes: [
-      [1000, 11],
-      [3000, 33],
-      [4000, 44],
+      [t[0]!, 11],
+      [t[2]!, 33],
+      [t[3]!, 44],
     ],
   });
   assert.equal(candles.length, 4);
   assert.equal(candles[0]!.volume, 11);
-  assert.equal(candles[1]!.volume, 0, 'a missing volume must be 0, not the next sample');
+  assert.equal(candles[1]!.volume, 0, 'a missing volume must be 0, not a neighbour an hour away');
   assert.equal(candles[2]!.volume, 33, 'volume shifted — indexes were zipped');
   assert.equal(candles[3]!.volume, 44);
+});
+
+test('a few seconds of clock skew does not zero every volume', () => {
+  // The premise for matching on timestamps is that the two series are sampled
+  // INDEPENDENTLY — which makes exact equality a trap. A uniform four-second
+  // offset made every lookup miss and every volume 0, indistinguishable from a
+  // market with no trading, silently killing both the volume pane and the
+  // model's volume feature.
+  const H = 3_600_000;
+  const base = 1_700_000_000_000;
+  const n = 6;
+  const candles = chartToCandles({
+    prices: Array.from({ length: n }, (_, i) => [base + i * H, 100 + i] as [number, number]),
+    total_volumes: Array.from(
+      { length: n },
+      (_, i) => [base + i * H + 4_000, 1_000_000 + i] as [number, number],
+    ),
+  });
+  assert.equal(candles.length, n);
+  assert.ok(
+    candles.every((c) => c.volume > 0),
+    `skew zeroed volumes: ${candles.map((c) => c.volume).join(',')}`,
+  );
+  assert.equal(candles[0]!.volume, 1_000_000, 'and each bar keeps its OWN volume');
+  assert.equal(candles[n - 1]!.volume, 1_000_000 + n - 1);
+});
+
+test('a skew on only the live snapshot still matches it', () => {
+  const H = 3_600_000;
+  const base = 1_700_000_000_000;
+  const candles = chartToCandles({
+    prices: [
+      [base, 100],
+      [base + H, 101],
+      [base + H + 46 * 60_000, 102],
+    ],
+    total_volumes: [
+      [base, 10],
+      [base + H, 11],
+      [base + H + 46 * 60_000 + 3_000, 12],
+    ],
+  });
+  assert.equal(candles[2]!.volume, 12, 'the live snapshot lost its volume');
 });
 
 test('non-finite prices are dropped rather than published as NaN', () => {

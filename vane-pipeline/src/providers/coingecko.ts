@@ -188,11 +188,19 @@ export class CoinGecko implements MarketProvider {
     const PER_PAGE = 250;
     const out: CoinMarket[] = [];
 
+    // per_page stays CONSTANT while page increments.
+    //
+    // Shrinking it on the last request looks like a courtesy and is a bug:
+    // CoinGecko interprets `page` relative to `per_page`, so page 2 at
+    // per_page=50 returns ranks 51-100, not 251-300. UNIVERSE_SIZE=300 came back
+    // as 300 rows with only 250 unique — ranks 251-300 never fetched — and
+    // fetchUniverse then logged the duplicates as bogus "ticker collisions".
+    // The list silently capped at 250 for any non-multiple of 250.
     for (let page = 1; out.length < limit; page++) {
       const rows = await this.get<CgMarketRow[]>('/coins/markets', {
         vs_currency: 'usd',
         order: 'market_cap_desc',
-        per_page: Math.min(PER_PAGE, limit - out.length),
+        per_page: PER_PAGE,
         page,
         sparkline: 'false',
         price_change_percentage: '24h',
@@ -356,13 +364,29 @@ export class CoinGecko implements MarketProvider {
           interval,
         });
       } catch (e) {
-        // A window beyond the tier's depth is expected, not exceptional. Stop
-        // reaching further back and keep what we have.
+        const msg = (e as Error).message;
+
+        // Auth and rate limiting are never "this window is too old". Swallowing
+        // them here reintroduced exactly the degraded-but-working state that
+        // candles() was fixed to prevent: with an invalid key this returned []
+        // rather than throwing.
+        if (/10002|10010|10011|API Key Missing|not authorized|coingecko 40[13]|coingecko 429/i.test(msg)) {
+          throw e;
+        }
+
+        // CONTINUE, not break.
+        //
+        // The loop runs OLDEST window first, and the tier-depth limit always
+        // rejects the oldest window first — so `break` discarded everything
+        // before anything had been collected. A 365-day request against a
+        // 90-day plan returned 0 candles when ~2,160 hourly bars were
+        // available, and the backtest then reported the entire universe as
+        // "too little history".
         console.warn(
-          `${id}: range ${new Date(start).toISOString().slice(0, 10)} failed ` +
-            `(${(e as Error).message.slice(0, 80)}) — stopping here`,
+          `${id}: window at ${new Date(start).toISOString().slice(0, 10)} ` +
+            `unavailable (${msg.slice(0, 70)}) — skipping it, keeping the rest`,
         );
-        break;
+        continue;
       }
       const page = chartToCandles(chart);
       if (page.length === 0) continue;
@@ -457,25 +481,49 @@ function toCoinMarket(r: CgMarketRow): CoinMarket {
  * volumes are indexed by timestamp and looked up.
  */
 export function chartToCandles(chart: CgMarketChart): Candle[] {
-  const prices = chart.prices ?? [];
-  const volumes = new Map<number, number>();
-  for (const [t, v] of chart.total_volumes ?? []) volumes.set(t, v);
+  const prices = (chart.prices ?? []).filter(([, p]) => Number.isFinite(p));
+  const vols = (chart.total_volumes ?? [])
+    .filter(([, v]) => Number.isFinite(v))
+    .sort((a, b) => a[0] - b[0]);
 
+  // NEAREST-WITHIN-TOLERANCE, not exact equality.
+  //
+  // The premise for matching by timestamp at all is that `prices` and
+  // `total_volumes` are sampled independently — and exact equality turns that
+  // premise into a trap. A uniform skew of a few seconds makes EVERY lookup miss
+  // and every volume 0, which is indistinguishable from genuine zero volume and
+  // silently kills both the volume chart and the model's volume feature. A
+  // four-second offset was enough to zero the whole series.
+  //
+  // Two minutes: far above any plausible clock skew, far below the 60-minute
+  // spacing of the finest series we request. It must stay well under that
+  // spacing, or a bar with a genuinely missing volume sample would silently
+  // adopt its neighbour's — trading one wrong number for another.
+  const TOLERANCE_MS = 2 * 60_000;
+  let vi = 0;
   const out: Candle[] = [];
-  for (const [t, p] of prices) {
-    if (!Number.isFinite(p)) continue;
-    // market_chart is close-only. Open/high/low are filled by resampling; at
-    // this raw resolution a bar IS its close.
-    out.push({
-      openTime: t,
-      open: p,
-      high: p,
-      low: p,
-      close: p,
-      volume: volumes.get(t) ?? 0,
-    });
+  let matched = 0;
+
+  for (const [t, p] of prices.slice().sort((a, b) => a[0] - b[0])) {
+    // Both series are sorted, so the search pointer only moves forward.
+    while (vi + 1 < vols.length && Math.abs(vols[vi + 1]![0] - t) <= Math.abs(vols[vi]![0] - t)) {
+      vi += 1;
+    }
+    const near = vols[vi];
+    const ok = near !== undefined && Math.abs(near[0] - t) <= TOLERANCE_MS;
+    if (ok) matched += 1;
+    out.push({ openTime: t, open: p, high: p, low: p, close: p, volume: ok ? near![1] : 0 });
   }
-  out.sort((a, b) => a.openTime - b.openTime);
+
+  // A volume series that mostly fails to match is a shape change, not a market
+  // with no trading. Say so rather than publishing a flat volume pane.
+  if (vols.length > 0 && out.length > 0 && matched < out.length * 0.5) {
+    console.warn(
+      `volume matched only ${matched}/${out.length} samples — check whether ` +
+        'the provider changed its timestamp alignment',
+    );
+  }
+
   return out;
 }
 

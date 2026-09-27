@@ -303,3 +303,43 @@ function histDoc(sym: string) {
     ranges: { '24H': { t: a, o: a, h: a, l: a, c: a, v: a } },
   };
 }
+
+test('a stale series does NOT publish 90 days under the 24H label', () => {
+  // The unbounded fallback published whatever it had whenever a window matched
+  // nothing. Measured before the fix: 96 bars spanning 89.1 days, labelled 24H.
+  // Understating is honest (4 days under "30D" is all the history there is);
+  // overstating is a lie, and a missing tab beats a lying one.
+  const now = Date.now();
+  const intraday = Array.from({ length: 2161 }, (_, i) => ({
+    openTime: now - 3 * DAY - (2160 - i) * HOUR,
+    open: 1, high: 1, low: 1, close: 1 + i, volume: 1,
+  }));
+  const daily = bars(365, DAY);
+
+  const out = cutRanges({ intraday, daily });
+
+  // 24H is the range with NOTHING in its window: the newest bar is 3 days old.
+  assert.equal(out['24H'], undefined, '24H must be omitted, not filled with 90 days');
+
+  // 7D genuinely has data — days -7 to -3 fall inside its window — so it should
+  // be present and honestly short, not absent.
+  assert.ok(out['7D'], '7D has real data in its window and should survive');
+
+  for (const r of ['7D', '30D', '90D'] as const) {
+    if (!out[r]) continue;
+    const span = out[r]!.t[out[r]!.t.length - 1]! - out[r]!.t[0]!;
+    const named = r === '30D' ? 30 : 90;
+    assert.ok(
+      span <= named * DAY * 1.05,
+      `${r} spans ${(span / DAY).toFixed(1)} days, more than it names`,
+    );
+  }
+});
+
+test('a young coin still gets its short ranges, because that is understating', () => {
+  // The fallback must survive in the direction it was written for: a coin with
+  // 4 days of history shows 4 days under 30D rather than nothing.
+  const out = cutRanges({ intraday: bars(4 * 24, HOUR), daily: bars(4, DAY) });
+  assert.ok(out['30D'], '30D should fall back to the whole (shorter) series');
+  assert.ok(out['24H'], '24H is genuinely available for a 4-day-old coin');
+});

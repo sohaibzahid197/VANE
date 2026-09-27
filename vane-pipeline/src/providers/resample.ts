@@ -26,12 +26,24 @@ export function resample(candles: Candle[], points: number): Series {
   // source gave us rather than re-deriving it.
   if (candles.length <= points) return toSeries(candles);
 
-  const size = candles.length / points;
+  // INTEGER arithmetic, not float multiplication.
+  //
+  // The obvious form — `size = n/points`, `end = floor((b+1)*size)` — relies on
+  // `floor(points * (n/points)) === n`, which IEEE-754 does not guarantee.
+  // `168 * (173/168)` is 172.99999999999997, so the last bucket ends at 172 and
+  // the NEWEST candle is silently dropped. This is not theoretical: a coin
+  // listed 21 days ago has 504 hourly bars, and both the 30D (points=180) and
+  // 90D (points=90) cuts of it lose their final bar — so the chart stops short
+  // of the current price, which reads as the coin having gone quiet.
+  //
+  // `(b+1)*n/points` computed with integer multiplication first is exact for
+  // every n and points in range, so the final bucket always ends at n.
+  const n = candles.length;
   const out: Series = { t: [], o: [], h: [], l: [], c: [], v: [] };
 
   for (let b = 0; b < points; b++) {
-    const start = Math.floor(b * size);
-    const end = Math.min(candles.length, Math.floor((b + 1) * size));
+    const start = Math.floor((b * n) / points);
+    const end = Math.floor(((b + 1) * n) / points);
     if (end <= start) continue;
 
     const slice = candles.slice(start, end);

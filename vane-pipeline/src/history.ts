@@ -106,7 +106,28 @@ export function cutRanges(raw: {
         ? source
         : source.filter((c) => c.openTime >= now - plan.hours! * 3_600_000);
 
-    const use = windowed.length >= 2 ? windowed : source;
+    // The fallback is for the UNDERSTATING direction only.
+    //
+    // Showing a four-day-old coin's four days under "30D" is honest — that is
+    // all the history there is. Showing ninety days under "24H" is not, and the
+    // unbounded fallback did exactly that: if the newest intraday bar is older
+    // than 24 hours (a thin coin, a delisted one, a stalled provider series),
+    // the 24H window matches nothing and the range fell back to the ENTIRE
+    // source. Measured: 96 bars spanning 89.1 days, published as "24H".
+    //
+    // So a fallback is allowed only when the source itself is shorter than the
+    // window being named. Otherwise the range is omitted, and a missing tab is
+    // far better than a tab that lies about what it shows.
+    let use = windowed;
+    if (windowed.length < 2) {
+      const span = source.length >= 2
+        ? source[source.length - 1]!.openTime - source[0]!.openTime
+        : 0;
+      const nameable = plan.hours === null || span <= plan.hours * 3_600_000;
+      if (!nameable) continue;
+      use = source;
+    }
+
     const series = resample(use, RANGE_POINTS[range]);
     if (series.c.length > 0) out[range] = series;
   }
@@ -158,9 +179,24 @@ export async function buildHistory(
     try {
       raw[step.key] = await provider.candles(coin.id, step.days, step.interval);
     } catch (e) {
+      const msg = (e as Error).message;
+
+      // An AUTH failure is not a per-coin problem and must not be swallowed.
+      //
+      // Both steps 401 on a revoked key, `raw` stays empty, cutRanges returns
+      // {}, and buildHistory returns null — which refresh.ts records as
+      // "no usable series". In REFRESH_MODE=history, the licence-critical daily
+      // rebuild and the one mode that never calls fetchUniverse, nothing else
+      // would throw: the run publishes nothing, reports health.history.ok with
+      // built: 0, exits 0, and the cron stays green while stored data ages past
+      // the 24-hour licence floor.
+      if (/10002|10010|10011|API Key Missing|not authorized|coingecko 40[13]|coingecko 429/i.test(msg)) {
+        throw e;
+      }
+
       // One failed resolution must not lose the other. A coin with no all-time
       // daily series can still show 24H through 90D.
-      console.warn(`${coin.sym}: ${step.key} fetch failed: ${(e as Error).message}`);
+      console.warn(`${coin.sym}: ${step.key} fetch failed: ${msg}`);
     }
   }
 

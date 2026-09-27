@@ -95,10 +95,38 @@ test('timestamps stay ascending and start each bucket', () => {
 test('the newest bar always survives aggregation', () => {
   // If the last bar is dropped, the chart stops short of the current price —
   // which reads as the coin having gone quiet.
-  for (const points of [7, 13, 60, 97]) {
-    const input = Array.from({ length: 500 }, (_, i) => candle(i, 100 + i));
-    const s = resample(input, points);
-    assert.equal(s.c[s.c.length - 1], 599, `lost the newest close at points=${points}`);
+  //
+  // This used to try four hand-picked `points` values at one length, and all
+  // four happened to be float-exact at n=500 — so it passed while
+  // n=504/points=180 (a coin listed 21 days ago, on the real 30D cut) silently
+  // lost its newest bar. Sweeping every published point budget across every
+  // plausible length is the only version of this test that means anything.
+  for (const points of [90, 96, 168, 180, 365]) {
+    for (let n = points + 1; n <= 2600; n++) {
+      const input = Array.from({ length: n }, (_, i) => candle(i, 100 + i));
+      const s = resample(input, points);
+      assert.equal(
+        s.c[s.c.length - 1],
+        100 + n - 1,
+        `lost the newest close at n=${n}, points=${points}`,
+      );
+    }
+  }
+});
+
+test('buckets stay contiguous and non-overlapping at every length', () => {
+  // The companion property: no candle counted twice, none skipped.
+  for (const points of [90, 168, 365]) {
+    for (const n of [points + 1, 504, 1000, 2161, 2600]) {
+      const input = Array.from({ length: n }, (_, i) => candle(i, 100 + i));
+      const s = resample(input, points);
+      // Opens are the first close of each bucket, so they must be strictly
+      // increasing and start at the very first candle.
+      assert.equal(s.o[0], 100, `n=${n} points=${points} did not start at bar 0`);
+      for (let i = 1; i < s.o.length; i++) {
+        assert.ok(s.o[i]! > s.o[i - 1]!, `bucket overlap at ${i} (n=${n}, points=${points})`);
+      }
+    }
   }
 });
 
