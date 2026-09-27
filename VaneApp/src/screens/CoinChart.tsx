@@ -43,12 +43,14 @@ import {
 import { useStore } from '../store.tsx';
 
 /**
- * Ranges drawn as a line rather than candles.
+ * The chart decides its own mode.
  *
- * Empty for now: every published range has enough bars for candle bodies to
- * read. Kept as the single place to change if a short range is ever added back.
+ * This used to pass an explicit 'candles' for every range, which defeated both
+ * of the chart's own safeguards: the density check (365 bars on a 320pt chart
+ * overlap into a solid band) and the no-range check (close-only data has no
+ * open/high/low to draw). Three of five ranges rendered as dashes and dots
+ * because of it. The chart can see the bars; this screen cannot.
  */
-const LINE_RANGES: Range[] = [];
 
 export default function CoinChart({
   market,
@@ -188,13 +190,7 @@ export default function CoinChart({
           </Card>
         ) : (
           <Card>
-            <Chart
-              series={series}
-              width={chartW}
-              height={chartH}
-              range={range}
-              mode={LINE_RANGES.includes(range) ? 'line' : 'candles'}
-            />
+            <Chart series={series} width={chartW} height={chartH} range={range} />
             <Text style={st.hint}>Touch and drag the chart to read exact values</Text>
           </Card>
         )}

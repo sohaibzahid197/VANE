@@ -188,7 +188,21 @@ export default function Navigation() {
                 />
               )}
             </Stack.Screen>
-            <Stack.Screen name="Chart">
+            <Stack.Screen
+              name="Chart"
+              // The ONLY screen that disables the swipe-back gesture.
+              //
+              // This screen's whole interaction is a horizontal drag across the
+              // chart to move the crosshair, and the stack's interactive pop
+              // recognizer wins that contest every time: dragging on the chart
+              // popped straight back to Markets instead of reading a price, which
+              // made the crosshair unusable. Found by dragging it on a device;
+              // the JS PanResponder claims the gesture correctly and still loses
+              // to the native recognizer.
+              //
+              // Navigation is not lost — BackHeader's arrow is right there, and
+              // it is the affordance the rest of the app already uses.
+              options={{ gestureEnabled: false }}>
               {({ route, navigation }) => {
                 const p = route.params as { market?: Market } | undefined;
                 // No sample fallback on purpose: this screen exists because a

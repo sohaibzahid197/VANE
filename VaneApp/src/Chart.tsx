@@ -55,10 +55,18 @@ export type ChartProps = {
 /**
  * Points per bar below which candle bodies stop being distinguishable.
  *
- * 2.4 rather than 2.0: the body is 68% of the slot, so at 2.4 the gap is ~0.77pt
- * — right at the edge of surviving rasterization on a 2x screen.
+ * MEASURED ON A DEVICE, not reasoned about. This was 2.4, derived from an
+ * argument that a 68%-of-slot body with a sub-pixel gap would merge into a solid
+ * band after rasterization. On an iPhone 17 Pro the 30D chart is 180 bars at
+ * ~1.9pt each, and the argument says that should be unreadable — the screenshot
+ * says otherwise: clearly separated green and red bodies with visible wicks. The
+ * threshold was throwing away the best-looking chart in the app.
+ *
+ * 1.5 keeps 30D (~1.9) and 90D (~3.9) as candles. Anything denser genuinely does
+ * merge, and the ranges that would hit it are close-only anyway, so they take the
+ * no-range branch below first.
  */
-const MIN_SLOT_FOR_CANDLES = 2.4;
+const MIN_SLOT_FOR_CANDLES = 1.5;
 
 type Geometry = {
   lo: number;
@@ -86,9 +94,42 @@ export function Chart({
 
   const n = series.c.length;
   const hasVolume = showVolume && series.v.length === n && series.v.some((v) => v > 0);
-  // Chosen from density unless the caller insisted.
+
+  /**
+   * Do these bars carry any candle information at all?
+   *
+   * CoinGecko's market_chart is CLOSE-ONLY, so chartToCandles emits every raw
+   * sample with open === high === low === close. resample() only synthesizes a
+   * real open/high/low when a bucket holds more than one bar — so a range whose
+   * source is already at or under its point budget passes through untouched and
+   * every "candle" is a single point.
+   *
+   * On screen that is a 1px dash with no body and no wick. 24H (25 bars into a
+   * 96 budget), 7D (168 into 168) and 1Y (365 into 365) all rendered as floating
+   * dashes and scattered dots, while 30D and 90D — which genuinely aggregate —
+   * drew proper candlesticks. Three of five ranges looked broken, and no amount
+   * of code review found it; it took opening the app.
+   *
+   * A line is the honest rendering of close-only data. You cannot draw a candle
+   * from one number.
+   */
+  const hasBarRange = useMemo(() => {
+    for (let i = 0; i < n; i++) {
+      if (series.h[i]! > series.l[i]!) return true;
+    }
+    return false;
+  }, [series, n]);
+
+  /**
+   * Chosen from the data, not asserted by the caller.
+   *
+   * `mode` is now advisory: a caller may force line mode, but it cannot force
+   * candles onto bars that have no range to draw. CoinChart used to pass an
+   * explicit 'candles' for every range, which silently defeated the density
+   * check this was added for.
+   */
   const drawMode: 'candles' | 'line' =
-    mode ?? (n > 0 && width / n >= MIN_SLOT_FOR_CANDLES ? 'candles' : 'line');
+    !hasBarRange || n === 0 || width / n < MIN_SLOT_FOR_CANDLES ? 'line' : (mode ?? 'candles');
 
   const geom = useMemo<Geometry | null>(() => {
     if (n === 0 || width <= 0 || height <= 0) return null;
