@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "backtest": "node --experimental-strip-types src/backtest.ts",
+    "probe": "node --experimental-strip-types src/probe.ts",
     "refresh": "node --experimental-strip-types src/refresh.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test \"test/*.test.ts\""
+    "test": "node --experimental-strip-types --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "firebase-admin": "^14.4.0"

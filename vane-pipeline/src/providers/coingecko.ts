@@ -224,11 +224,26 @@ export class CoinGecko implements MarketProvider {
       return chartToCandles(chart);
     } catch (e) {
       const msg = (e as Error).message;
+
+      // NEVER fall back on an authentication failure.
+      //
+      // This was a real bug, found by probing with a deliberately invalid key.
+      // `interval` is the part of this request that requires authentication —
+      // market_chart WITHOUT it answers from CoinGecko's public tier, with no
+      // key at all. So a missing or wrong key surfaces here as a 401 on the
+      // interval request, and falling back silently produced a working-looking
+      // pipeline running unauthenticated on the public tier: coarser bars, and
+      // no commercial licence whatsoever. That is the exact failure this
+      // migration exists to prevent, so it has to be loud.
+      if (/10002|API Key Missing|coingecko 401/i.test(msg)) throw e;
+
       const rejectedInterval = interval && /coingecko 4\d\d/.test(msg);
       if (!rejectedInterval) throw e;
+
       console.warn(
         `${id}: interval=${interval} rejected, falling back to automatic ` +
-          `granularity (coarser bars). Adjust RANGE_REQUEST if this persists.`,
+          `granularity (coarser bars). This is a PLAN limitation, not an auth ` +
+          `problem — adjust RANGE_PLAN in history.ts if it persists.`,
       );
       return chartToCandles(await this.get<CgMarketChart>(path, params));
     }
