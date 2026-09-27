@@ -71,7 +71,15 @@ export function compact(n: number | null): string {
   if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
   if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`;
   if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
-  return `${sign}$${abs.toFixed(2)}`;
+  // Below a thousand this is no longer a magnitude label, so hand it to money()
+  // rather than repeating a fixed-decimal rule that cannot hold a small number.
+  //
+  // This was `toFixed(2)`, which is the THIRD place the same mistake was made.
+  // compact() is used for market cap and volume, where two decimals are ample —
+  // but CoinChart also uses it for the all-time high and low, and XRP's all-time
+  // low of about $0.0028 rendered as "$0.00" on screen. On a memecoin it would
+  // erase every significant digit.
+  return money(n);
 }
 
 /** Supply counts are not money; same magnitudes without a currency mark. */

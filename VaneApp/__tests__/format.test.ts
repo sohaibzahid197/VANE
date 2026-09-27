@@ -74,3 +74,25 @@ describe('compact magnitudes', () => {
     expect(compactUnits(19_500_000)).toBe('19.50M');
   });
 });
+
+describe('compact on small values', () => {
+  it('does not erase an all-time low below a cent', () => {
+    // Seen on device: XRP's all-time low (~$0.0028) rendered as "$0.00" in the
+    // All-time card. compact() is used for market cap and volume, where two
+    // decimals are ample, and for ATH/ATL, where they are not.
+    expect(compact(0.0028)).not.toBe('$0.00');
+    // Three significant figures, so the trailing zero is deliberate and the
+    // digits that matter survive.
+    expect(compact(0.0028)).toBe('$0.00280');
+    expect(compact(0.00002347)).toBe('$0.0000235');
+  });
+
+  it('still uses magnitude labels above a thousand', () => {
+    expect(compact(95.62e9)).toBe('$95.62B');
+    expect(compact(4500)).toBe('$4.5K');
+  });
+
+  it('handles the ordinary range unchanged', () => {
+    expect(compact(67.81)).toBe('$67.81');
+  });
+});
